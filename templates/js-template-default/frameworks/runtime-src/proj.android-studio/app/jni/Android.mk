@@ -6,18 +6,22 @@ LOCAL_MODULE := cocos2djs_shared
 
 LOCAL_MODULE_FILENAME := libcocos2djs
 
+ifeq ($(USE_ARM_MODE),1)
+LOCAL_ARM_MODE := arm
+endif
+
 LOCAL_SRC_FILES := hellojavascript/main.cpp \
-                   ../../../Classes/AppDelegate.cpp \
-                   ../../../Classes/CCScale9Sprite.cpp \
-                   ../../../Classes/jsb/jsb_creator_auto.cpp 
+				   ../../../Classes/AppDelegate.cpp \
+				   ../../../Classes/jsb_module_register.cpp \
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/../../../Classes
 
-LOCAL_STATIC_LIBRARIES := cocos2d_js_static
-
-LOCAL_EXPORT_CFLAGS := -DCOCOS2D_DEBUG=2 -DCOCOS2D_JAVASCRIPT
+LOCAL_STATIC_LIBRARIES := cocos2dx_static
 
 include $(BUILD_SHARED_LIBRARY)
 
+ifneq ($(filter x86 armeabi-v7a, $(TARGET_ARCH_ABI)),)
+	LOCAL_WHOLE_STATIC_LIBRARIES += android_support
+endif 
 
-$(call import-module, scripting/js-bindings/proj.android)
+$(call import-module, cocos)

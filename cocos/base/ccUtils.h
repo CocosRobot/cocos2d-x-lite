@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010      cocos2d-x.org
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -22,12 +23,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-#ifndef __SUPPORT_CC_UTILS_H__
-#define __SUPPORT_CC_UTILS_H__
+#pragma once
 
 #include <vector>
 #include <string>
-#include "2d/CCNode.h"
 #include "base/ccMacros.h"
 
 /** @file ccUtils.h
@@ -35,8 +34,16 @@ Misc free functions
 */
 
 NS_CC_BEGIN
+
+namespace
+{
+#if (CC_TARGET_PLATFORM == CC_PLATFORM_WIN32)
+#include <winsock.h>
+    extern "C" int gettimeofday(struct timeval * val, void *);
+#endif
+}
 /*
-ccNextPOT function is licensed under the same license that is used in Texture2D.m.
+utils::nextPOT function is licensed under the same license that is used in Texture2D.m.
 */
 
 /** Returns the Next Power of Two value.
@@ -50,66 +57,29 @@ Examples:
 @since v0.99.5
 */
 
-int ccNextPOT(int value);
-
-class Sprite;
 namespace utils
 {
-    /** Capture the entire screen.
-     * To ensure the snapshot is applied after everything is updated and rendered in the current frame,
-     * we need to wrap the operation with a custom command which is then inserted into the tail of the render queue.
-     * @param afterCaptured specify the callback function which will be invoked after the snapshot is done.
-     * @param filename specify a filename where the snapshot is stored. This parameter can be either an absolute path or a simple
-     * base filename ("hello.png" etc.), don't use a relative path containing directory names.("mydir/hello.png" etc.).
-     * @since v3.2
-     */
-    void CC_DLL captureScreen(const std::function<void(bool, const std::string&)>& afterCaptured, const std::string& filename);
-
-    /** Find children by name, it will return all child that has the same name.
-     * It supports c++ 11 regular expression. It is  a helper function of `Node::enumerateChildren()`.
-     * You can refer to `Node::enumerateChildren()` for detail information.
-     *
-     * @param node The node to find
-     * @param name The name to search for, it supports c++ 11 expression
-     * @return Array of Nodes that matches the name
-     * @since v3.2
-     */
-    std::vector<Node*> CC_DLL findChildren(const Node &node, const std::string &name);
-
+    CC_DLL int nextPOT(int x);
     /** Same to ::atof, but strip the string, remain 7 numbers after '.' before call atof.
      * Why we need this? Because in android c++_static, atof ( and std::atof ) is unsupported for numbers have long decimal part and contain
      * several numbers can approximate to 1 ( like 90.099998474121094 ), it will return inf. This function is used to fix this bug.
      * @param str The string be to converted to double.
      * @return Returns converted value of a string.
      */
-    double CC_DLL atof(const char* str);
+    CC_DLL double  atof(const char* str);
 
     /** Get current exact time, accurate to nanoseconds.
      * @return Returns the time in seconds since the Epoch.
      */
-    double CC_DLL gettime();
+    CC_DLL double  gettime();
 
     /**
      * Get current time in milliseconds, accurate to nanoseconds
      *
      * @return  Returns the time in milliseconds since the Epoch.
      */
-    long long CC_DLL getTimeInMilliseconds();
-
-    /**
-     * Calculate unionof bounding box of a node and its children.
-     * @return Returns unionof bounding box of a node and its children.
-     */
-    Rect CC_DLL getCascadeBoundingBox(Node *node);
-
-    /**
-     * Create a sprite instance from base64 encoded image.
-     * @return Returns an instance of sprite
-     */
-    Sprite* createSpriteFromBase64(const char* base64String);
+    CC_DLL long long  getTimeInMilliseconds();
 }
 
 NS_CC_END
-
-#endif // __SUPPORT_CC_UTILS_H__
 

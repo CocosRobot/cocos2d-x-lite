@@ -1,5 +1,7 @@
 /**
  Copyright 2013 BlackBerry Inc.
+ Copyright (c) 2013-2016 Chukong Technologies Inc.
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -19,8 +21,10 @@
  */
 
 #include "math/Vec3.h"
+#include "math/Mat3.hpp"
 #include "math/MathUtil.h"
 #include "base/ccMacros.h"
+#include "math/Quaternion.h"
 
 NS_CC_MATH_BEGIN
 
@@ -74,7 +78,7 @@ float Vec3::angle(const Vec3& v1, const Vec3& v2)
     float dy = v1.z * v2.x - v1.x * v2.z;
     float dz = v1.x * v2.y - v1.y * v2.x;
 
-    return atan2f(sqrt(dx * dx + dy * dy + dz * dz) + MATH_FLOAT_SMALL, dot(v1, v2));
+    return std::atan2(std::sqrt(dx * dx + dy * dy + dz * dz) + MATH_FLOAT_SMALL, dot(v1, v2));
 }
 
 void Vec3::add(const Vec3& v1, const Vec3& v2, Vec3* dst)
@@ -151,13 +155,51 @@ void Vec3::cross(const Vec3& v1, const Vec3& v2, Vec3* dst)
     MathUtil::crossVec3(&v1.x, &v2.x, &dst->x);
 }
 
+void Vec3::multiply(const Vec3& v)
+{
+    x *= v.x;
+    y *= v.y;
+    z *= v.z;
+}
+
+void Vec3::multiply(const Vec3& v1, const Vec3& v2, Vec3* dst)
+{
+    dst->x = v1.x * v2.x;
+    dst->y = v1.y * v2.y;
+    dst->z = v1.z * v2.z;
+}
+
+void Vec3::transformMat3(const Vec3& v, const Mat3 &m)
+{
+    float ix = v.x, iy = v.y, iz = v.z;
+    x = ix * m.m[0] + iy * m.m[3] + iz * m.m[6];
+    y = ix * m.m[1] + iy * m.m[4] + iz * m.m[7];
+    z = ix * m.m[2] + iy * m.m[5] + iz * m.m[8];
+}
+
+void Vec3::transformQuat(const Quaternion& q)
+{
+    float qx = q.x, qy = q.y, qz = q.z, qw = q.w;
+    
+    // calculate quat * vec
+    float ix = qw * x + qy * z - qz * y;
+    float iy = qw * y + qz * x - qx * z;
+    float iz = qw * z + qx * y - qy * x;
+    float iw = -qx * x - qy * y - qz * z;
+    
+    // calculate result * inverse quat
+    x = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+    y = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+    z = iz * qw + iw * -qz + ix * -qy - iy * -qx;
+}
+
 float Vec3::distance(const Vec3& v) const
 {
     float dx = v.x - x;
     float dy = v.y - y;
     float dz = v.z - z;
 
-    return sqrt(dx * dx + dy * dy + dz * dz);
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 float Vec3::distanceSquared(const Vec3& v) const
@@ -186,7 +228,7 @@ void Vec3::normalize()
     if (n == 1.0f)
         return;
 
-    n = sqrt(n);
+    n = std::sqrt(n);
     // Too close to zero.
     if (n < MATH_TOLERANCE)
         return;
@@ -228,4 +270,3 @@ const Vec3 Vec3::UNIT_Y(0.0f, 1.0f, 0.0f);
 const Vec3 Vec3::UNIT_Z(0.0f, 0.0f, 1.0f);
 
 NS_CC_MATH_END
-

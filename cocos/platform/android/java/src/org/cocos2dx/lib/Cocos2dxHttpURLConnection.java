@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2014 cocos2d-x.org
 Copyright (c) 2014-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -55,6 +56,7 @@ import javax.net.ssl.TrustManagerFactory;
 
 public class Cocos2dxHttpURLConnection
 {
+    private static String TAG = "Cocos2dxHttpURLConnection";
     private static final String POST_METHOD = "POST" ;
     private static final String PUT_METHOD = "PUT" ;
 
@@ -68,7 +70,8 @@ public class Cocos2dxHttpURLConnection
             urlConnection.setRequestProperty("Accept-Encoding", "identity");
             urlConnection.setDoInput(true);
         } catch (Exception e) {
-            Log.e("URLConnection exception", e.toString());
+            e.printStackTrace();
+            Log.e(TAG, "createHttpURLConnection:" + e.toString());
             return null;
         }
 
@@ -87,7 +90,7 @@ public class Cocos2dxHttpURLConnection
                 urlConnection.setDoOutput(true);
             }
         } catch (ProtocolException e) {
-            Log.e("URLConnection exception", e.toString());
+            Log.e(TAG, "setRequestMethod:" + e.toString());
         }
 
     }
@@ -105,8 +108,8 @@ public class Cocos2dxHttpURLConnection
                 caInput = new BufferedInputStream(new FileInputStream(sslFilename));
             }else {
                 String assetString = "assets/";
-                String assetsFileName = sslFilename.substring(assetString.length());
-                caInput = new BufferedInputStream(Cocos2dxActivity.COCOS_ACTIVITY.getAssets().open(assetsFileName));
+                String assetsfilenameString = sslFilename.substring(assetString.length());
+                caInput = new BufferedInputStream(Cocos2dxHelper.getActivity().getAssets().open(assetsfilenameString));
             }
 
             CertificateFactory cf = CertificateFactory.getInstance("X.509");
@@ -132,7 +135,8 @@ public class Cocos2dxHttpURLConnection
 
             httpsURLConnection.setSSLSocketFactory(context.getSocketFactory());
         } catch (Exception e) {
-            Log.e("URLConnection exception", e.toString());
+            e.printStackTrace();
+            Log.e(TAG, "setVerifySSL:" + e.toString());
         }
     }
 
@@ -146,9 +150,9 @@ public class Cocos2dxHttpURLConnection
 
         try {
             http.connect();
-        } catch (IOException e) {
-            Log.e("cocos2d-x debug info", "come in connect");
-            Log.e("cocos2d-x debug info", e.toString());
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.e(TAG, "connect" + e.toString());
             suc = 1;
         }
 
@@ -167,8 +171,9 @@ public class Cocos2dxHttpURLConnection
                 out.flush();
             }
             out.close();
-        } catch (IOException e) {
-            Log.e("URLConnection exception", e.toString());
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.e(TAG, "sendRequest:" + e.toString());
         }
     }
 
@@ -269,23 +274,25 @@ public class Cocos2dxHttpURLConnection
         } catch (IOException e) {
             in = http.getErrorStream();
         } catch (Exception e) {
-            Log.e("URLConnection exception", e.toString());
+            e.printStackTrace();
+            Log.e(TAG, "1 getResponseContent: " + e.toString());
             return null;
         }
 
         try {
             byte[] buffer = new byte[1024];
-            int size = 0;
-            ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+            int size   = 0;
+            ByteArrayOutputStream bytestream = new ByteArrayOutputStream();
             while((size = in.read(buffer, 0 , 1024)) != -1)
             {
-                byteStream.write(buffer, 0, size);
+                bytestream.write(buffer, 0, size);
             }
-            byte retBuffer[] = byteStream.toByteArray();
-            byteStream.close();
-            return retBuffer;
+            byte retbuffer[] = bytestream.toByteArray();
+            bytestream.close();
+            return retbuffer;
         } catch (Exception e) {
-            Log.e("URLConnection exception", e.toString());
+            e.printStackTrace();
+            Log.e(TAG, "2 getResponseContent:" + e.toString());
         }
 
         return null;
@@ -295,8 +302,9 @@ public class Cocos2dxHttpURLConnection
         int code = 0;
         try {
             code = http.getResponseCode();
-        } catch (IOException e) {
-            Log.e("URLConnection exception", e.toString());
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.e(TAG, "getResponseCode:" + e.toString());
         }
         return code;
     }
@@ -305,9 +313,10 @@ public class Cocos2dxHttpURLConnection
         String msg;
         try {
             msg = http.getResponseMessage();
-        } catch (IOException e) {
+        } catch (Exception e) {
+            e.printStackTrace();
             msg = e.toString();
-            Log.e("URLConnection exception", msg);
+            Log.e(TAG, "getResponseMessage: " + msg);
         }
 
         return msg;
@@ -335,7 +344,7 @@ public class Cocos2dxHttpURLConnection
     public static String combinCookies(List<String> list, String hostDomain) {
         StringBuilder sbCookies = new StringBuilder();
         String domain    = hostDomain;
-        String tailMatch = "FALSE";
+        String tailmatch = "FALSE";
         String path      = "/";
         String secure    = "FALSE";
         String key = null;
@@ -371,7 +380,7 @@ public class Cocos2dxHttpURLConnection
 
             sbCookies.append(domain);
             sbCookies.append('\t');
-            sbCookies.append(tailMatch);  //access
+            sbCookies.append(tailmatch);  //access
             sbCookies.append('\t');
             sbCookies.append(path);      //path
             sbCookies.append('\t');
@@ -390,16 +399,15 @@ public class Cocos2dxHttpURLConnection
 
     private static String str2Seconds(String strTime) {
         Calendar c = Calendar.getInstance();
-        long millisSecond = 0;
+        long milliseconds = 0;
 
         try {
             c.setTime(new SimpleDateFormat("EEE, dd-MMM-yy hh:mm:ss zzz", Locale.US).parse(strTime));
-            millisSecond = c.getTimeInMillis()/1000;
+            milliseconds = c.getTimeInMillis() / 1000;
         } catch (ParseException e) {
-            Log.e("URLConnection exception", e.toString());
+            Log.e(TAG, "str2Seconds: " + e.toString());
         }
 
-        return Long.toString(millisSecond);
+        return Long.toString(milliseconds);
     }
 }
-

@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2013 cocos2d-x.org
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -28,8 +29,9 @@ THE SOFTWARE.
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <type_traits>
 
-#include "platform/CCPlatformMacros.h"
+#include "base/ccMacros.h"
 #include "base/ccTypes.h"
 #include "base/CCValue.h"
 #include "base/CCData.h"
@@ -40,6 +42,78 @@ NS_CC_BEGIN
  * @addtogroup platform
  * @{
  */
+
+
+class ResizableBuffer {
+public:
+    virtual ~ResizableBuffer() {}
+    virtual void resize(size_t size) = 0;
+    virtual void* buffer() const = 0;
+};
+
+template<typename T>
+class ResizableBufferAdapter { };
+
+
+template<typename CharT, typename Traits, typename Allocator>
+class ResizableBufferAdapter< std::basic_string<CharT, Traits, Allocator> > : public ResizableBuffer {
+    typedef std::basic_string<CharT, Traits, Allocator> BufferType;
+    BufferType* _buffer;
+public:
+    explicit ResizableBufferAdapter(BufferType* buffer) : _buffer(buffer) {}
+    virtual void resize(size_t size) override {
+        _buffer->resize((size + sizeof(CharT) - 1) / sizeof(CharT));
+    }
+    virtual void* buffer() const override {
+        // can not invoke string::front() if it is empty
+
+        if (_buffer->empty())
+            return nullptr;
+        else
+            return &_buffer->front();
+    }
+};
+
+template<typename T, typename Allocator>
+class ResizableBufferAdapter< std::vector<T, Allocator> > : public ResizableBuffer {
+    typedef std::vector<T, Allocator> BufferType;
+    BufferType* _buffer;
+public:
+    explicit ResizableBufferAdapter(BufferType* buffer) : _buffer(buffer) {}
+    virtual void resize(size_t size) override {
+        _buffer->resize((size + sizeof(T) - 1) / sizeof(T));
+    }
+    virtual void* buffer() const override {
+        // can not invoke vector::front() if it is empty
+
+        if (_buffer->empty())
+            return nullptr;
+        else
+            return &_buffer->front();
+    }
+};
+
+
+template<>
+class ResizableBufferAdapter<Data> : public ResizableBuffer {
+    typedef Data BufferType;
+    BufferType* _buffer;
+public:
+    explicit ResizableBufferAdapter(BufferType* buffer) : _buffer(buffer) {}
+    virtual void resize(size_t size) override {
+        size_t oldSize = static_cast<size_t>(_buffer->getSize());
+        if (oldSize != size) {
+            // need to take buffer ownership for outer memory control
+            auto old = _buffer->takeBuffer();
+            void* buffer = realloc(old, size);
+            if (buffer)
+                _buffer->fastSet((unsigned char*)buffer, size);
+        }
+    }
+    virtual void* buffer() const override {
+        return _buffer->getBytes();
+    }
+};
 
 /** Helper class to handle file operations. */
 class CC_DLL FileUtils
@@ -92,6 +166,85 @@ public:
      *  @return A data object.
      */
     virtual Data getDataFromFile(const std::string& filename);
+
+
+    enum class Status
+    {
+        OK = 0,
+        NotExists = 1, // File not exists
+        OpenFailed = 2, // Open file failed.
+        ReadFailed = 3, // Read failed
+        NotInitialized = 4, // FileUtils is not initializes
+        TooLarge = 5, // The file is too large (great than 2^32-1)
+        ObtainSizeFailed = 6 // Failed to obtain the file size.
+    };
+
+    /**
+     *  Gets whole file contents as string from a file.
+     *
+     *  Unlike getStringFromFile, these getContents methods:
+     *      - read file in binary mode (does not convert CRLF to LF).
+     *      - does not truncate the string when '\0' is found (returned string of getContents may have '\0' in the middle.).
+     *
+     *  The template version of can accept cocos2d::Data, std::basic_string and std::vector.
+     *
+     *  @code
+     *  std::string sbuf;
+     *  FileUtils::getInstance()->getContents("path/to/file", &sbuf);
+     *
+     *  std::vector<int> vbuf;
+     *  FileUtils::getInstance()->getContents("path/to/file", &vbuf);
+     *
+     *  Data dbuf;
+     *  FileUtils::getInstance()->getContents("path/to/file", &dbuf);
+     *  @endcode
+     *
+     *  Note: if you read to std::vector<T> and std::basic_string<T> where T is not 8 bit type,
+     *  you may get 0 ~ sizeof(T)-1 bytes padding.
+     *
+     *  - To write a new buffer class works with getContents, just extend ResizableBuffer.
+     *  - To write a adapter for existing class, write a specialized ResizableBufferAdapter for that class, see follow code.
+     *
+     *  @code
+     *  NS_CC_BEGIN // ResizableBufferAdapter needed in cocos2d namespace.
+     *  template<>
+     *  class ResizableBufferAdapter<AlreadyExistsBuffer> : public ResizableBuffer {
+     *  public:
+     *      ResizableBufferAdapter(AlreadyExistsBuffer* buffer)  {
+     *          // your code here
+     *      }
+     *      virtual void resize(size_t size) override  {
+     *          // your code here
+     *      }
+     *      virtual void* buffer() const override {
+     *          // your code here
+     *      }
+     *  };
+     *  NS_CC_END
+     *  @endcode
+     *
+     *  @param[in]  filename The resource file name which contains the path.
+     *  @param[out] buffer The buffer where the file contents are store to.
+     *  @return Returns:
+     *      - Status::OK when there is no error, the buffer is filled with the contents of file.
+     *      - Status::NotExists when file not exists, the buffer will not changed.
+     *      - Status::OpenFailed when cannot open file, the buffer will not changed.
+     *      - Status::ReadFailed when read end up before read whole, the buffer will fill with already read bytes.
+     *      - Status::NotInitialized when FileUtils is not initializes, the buffer will not changed.
+     *      - Status::TooLarge when there file to be read is too large (> 2^32-1), the buffer will not changed.
+     *      - Status::ObtainSizeFailed when failed to obtain the file size, the buffer will not changed.
+     */
+    template <
+        typename T,
+        typename Enable = typename std::enable_if<
+            std::is_base_of< ResizableBuffer, ResizableBufferAdapter<T> >::value
+        >::type
+    >
+    Status getContents(const std::string& filename, T* buffer) {
+        ResizableBufferAdapter<T> buf(buffer);
+        return getContents(filename, &buf);
+    }
+    virtual Status getContents(const std::string& filename, ResizableBuffer* buffer);
 
     /**
      *  Gets resource file data
@@ -200,7 +353,7 @@ public:
     /**
      *  Sets the filenameLookup dictionary.
      *
-     *  @param pFilenameLookupDict The dictionary for replacing filename.
+     *  @param filenameLookupDict The dictionary for replacing filename.
      *  @since v2.1
      */
     virtual void setFilenameLookupDictionary(const ValueMap& filenameLookupDict);
@@ -208,7 +361,7 @@ public:
     /**
      *  Gets full path from a file name and the path of the relative file.
      *  @param filename The file name.
-     *  @param pszRelativeFile The path of the relative file.
+     *  @param relativeFile The path of the relative file.
      *  @return The full path.
      *          e.g. filename: hello.png, pszRelativeFile: /User/path1/path2/hello.plist
      *               Return: /User/path1/path2/hello.pvr (If there a a key(hello.png)-value(hello.pvr) in FilenameLookup dictionary. )
@@ -253,9 +406,9 @@ public:
      *  @note This method could access relative path and absolute path.
      *        If the relative path was passed to the vector, FileUtils will add the default resource directory before the relative path.
      *        For instance:
-     *            On Android, the default resource root path is "assets/".
+     *            On Android, the default resource root path is "@assets/".
      *            If "/mnt/sdcard/" and "resources-large" were set to the search paths vector,
-     *            "resources-large" will be converted to "assets/resources-large" since it was a relative path.
+     *            "resources-large" will be converted to "@assets/resources-large" since it was a relative path.
      *
      *  @param searchPaths The array contains search paths.
      *  @see fullPathForFilename(const char*)
@@ -264,6 +417,11 @@ public:
      *  @lua NA
      */
     virtual void setSearchPaths(const std::vector<std::string>& searchPaths);
+
+    /**
+     * Get default resource root path.
+     */
+    const std::string& getDefaultResourceRootPath() const;
 
     /**
      * Set default resource root path.
@@ -275,16 +433,25 @@ public:
       *
       * @since v2.1
       */
-    virtual void addSearchPath(const std::string & path, const bool front=false);
+    void addSearchPath(const std::string & path, const bool front=false);
 
     /**
      *  Gets the array of search paths.
      *
-     *  @return The array of search paths.
+     *  @return The array of search paths which may contain the prefix of default resource root path. 
+     *  @note In best practise, getter function should return the value of setter function passes in.
+     *        But since we should not break the compatibility, we keep using the old logic. 
+     *        Therefore, If you want to get the original search paths, please call 'getOriginalSearchPaths()' instead.
      *  @see fullPathForFilename(const char*).
      *  @lua NA
      */
     virtual const std::vector<std::string>& getSearchPaths() const;
+
+    /**
+     *  Gets the original search path array set by 'setSearchPaths' or 'addSearchPath'.
+     *  @return The array of the original search paths
+     */
+    virtual const std::vector<std::string>& getOriginalSearchPaths() const;
 
     /**
      *  Gets the writable path.
@@ -371,7 +538,7 @@ public:
     * Windows fopen can't support UTF-8 filename
     * Need convert all parameters fopen and other 3rd-party libs
     *
-    * @param filename std::string name file for conversion from utf-8
+    * @param filenameUtf8 std::string name file for conversion from utf-8
     * @return std::string ansi filename in current locale
     */
     virtual std::string getSuitableFOpen(const std::string& filenameUtf8) const;
@@ -400,7 +567,7 @@ public:
     /**
      *  Checks whether the path is an absolute path.
      *
-     *  @note On Android, if the parameter passed in is relative to "assets/", this method will treat it as an absolute path.
+     *  @note On Android, if the parameter passed in is relative to "@assets/", this method will treat it as an absolute path.
      *        Also on Blackberry, path starts with "app/native/Resources/" is treated as an absolute path.
      *
      *  @param path The path that needs to be checked.
@@ -415,6 +582,22 @@ public:
      *  @return True if the directory exists, false if not.
      */
     virtual bool isDirectoryExist(const std::string& dirPath) const;
+    
+    /**
+     *  List all files in a directory.
+     *
+     *  @param dirPath The path of the directory, it could be a relative or an absolute path.
+     *  @return File paths in a string vector
+     */
+    virtual std::vector<std::string> listFiles(const std::string& dirPath) const;
+    
+    /**
+     *  List all files recursively in a directory.
+     *
+     *  @param dirPath The path of the directory, it could be a relative or an absolute path.
+     *  @return File paths in a string vector
+     */
+    virtual void listFilesRecursively(const std::string& dirPath, std::vector<std::string> *files) const;
 
     /**
      *  Creates a directory.
@@ -470,6 +653,9 @@ public:
 
     /** Returns the full path cache. */
     const std::unordered_map<std::string, std::string>& getFullPathCache() const { return _fullPathCache; }
+
+    std::string normalizePath(const std::string& path) const;
+    std::string getFileDir(const std::string& path) const;
 
 protected:
     /**
@@ -554,10 +740,15 @@ protected:
     std::vector<std::string> _searchPathArray;
 
     /**
+     * The search paths which was set by 'setSearchPaths' / 'addSearchPath'.
+     */
+    std::vector<std::string> _originalSearchPaths;
+
+    /**
      *  The default root path of resources.
      *  If the default root path of resources needs to be changed, do it in the `init` method of FileUtils's subclass.
      *  For instance:
-     *  On Android, the default root path of resources will be assigned with "assets/" in FileUtilsAndroid::init().
+     *  On Android, the default root path of resources will be assigned with "@assets/" in FileUtilsAndroid::init().
      *  Similarly on Blackberry, we assign "app/native/Resources/" to this variable in FileUtilsBlackberry::init().
      */
     std::string _defaultResRootPath;
@@ -578,6 +769,11 @@ protected:
      */
     static FileUtils* s_sharedFileUtils;
 
+    /**
+     *  Remove null value key (for iOS)
+     */
+    virtual void valueMapCompact(ValueMap& valueMap);
+    virtual void valueVectorCompact(ValueVector& valueVector);
 };
 
 // end of support group
@@ -586,4 +782,3 @@ protected:
 NS_CC_END
 
 #endif    // __CC_FILEUTILS_H__
-

@@ -1,6 +1,7 @@
 /**
  Copyright 2013 BlackBerry Inc.
- Copyright (c) 2014-2016 Chukong Technologies
+ Copyright (c) 2014-2016 Chukong Technologies Inc.
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -22,6 +23,7 @@
 #ifndef MATH_VEC3_H
 #define MATH_VEC3_H
 
+#include <cmath>
 #include "math/CCMathBase.h"
 
 /**
@@ -33,6 +35,7 @@ NS_CC_MATH_BEGIN
 
 class Mat4;
 class Quaternion;
+class Mat3;
 
 /**
  * Defines a 3-element floating point vector.
@@ -197,6 +200,36 @@ public:
      * @param dst A vector to store the result in.
      */
     static void cross(const Vec3& v1, const Vec3& v2, Vec3* dst);
+    
+    /**
+     * Multiply the elements of the specified vector to this one.
+     *
+     * @param v The vector to multiply.
+     */
+    void multiply(const Vec3& v);
+    
+    /**
+     * Multiply the specified vectors and stores the result in dst.
+     *
+     * @param v1 The first vector.
+     * @param v2 The second vector.
+     * @param dst A vector to store the result in.
+     */
+    static void multiply(const Vec3& v1, const Vec3& v2, Vec3* dst);
+    
+    /**
+     * Transforms this vector by the specified Mat3 and stores the result in this vector.
+     *
+     * @param v The Vec3 to transform.
+     * @param m The matrix.
+     */
+    void transformMat3(const Vec3& v, const Mat3& m);
+    /**
+     * Transforms this vector by the specified quaternion and stores the result in this vector.
+     *
+     * @param q The quaternion to multiply.
+     */
+    void transformQuat(const Quaternion& q);
 
     /**
      * Returns the distance between this vector and v.
@@ -506,7 +539,6 @@ NS_CC_MATH_END
  end of base group
  @}
  */
-#include "Vec3.inl"
+#include "math/Vec3.inl"
 
 #endif // MATH_VEC3_H
-

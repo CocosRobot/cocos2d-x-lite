@@ -1,6 +1,7 @@
 /**
  Copyright 2013 BlackBerry Inc.
- Copyright (c) 2014-2016 Chukong Technologies
+ Copyright (c) 2014-2016 Chukong Technologies Inc.
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -26,7 +27,7 @@
 #include <xmmintrin.h>
 #endif
 
-#include "CCMathBase.h"
+#include "math/CCMathBase.h"
 
 /**
  * @addtogroup base
@@ -87,6 +88,14 @@ public:
      * @return interpolated float value
      */
     static float lerp(float from, float to, float alpha);
+    
+    /**
+     * Add hash_combine math according to:
+     * https://www.boost.org/doc/libs/1_55_0/doc/html/hash/reference.html#boost.hash_combine
+     * @param seed
+     * @param v
+     */
+    static void combineHash(size_t& seed, const size_t& v);
 private:
     //Indicates that if neon is enabled
     static bool isNeon32Enabled();
@@ -128,7 +137,6 @@ private:
     static void transformVec4(const float* m, const float* v, float* dst);
 
     static void crossVec3(const float* v1, const float* v2, float* dst);
-
 };
 
 NS_CC_MATH_END
@@ -139,4 +147,3 @@ NS_CC_MATH_END
 #define MATRIX_SIZE ( sizeof(float) * 16)
 
 #endif
-

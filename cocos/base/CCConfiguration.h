@@ -39,8 +39,6 @@ THE SOFTWARE.
  */
 NS_CC_BEGIN
 
-class EventCustom;
-
 /** @class Configuration
  * @brief Configuration contains some openGL variables
  * @since v0.99.0
@@ -111,13 +109,13 @@ public:
      *
      * @return Is true if supports S3TC Texture Compressed.
      */
-//    bool supportsS3TC() const;
+    bool supportsS3TC() const;
 
     /** Whether or not ATITC Texture Compressed is supported.
      *
      * @return Is true if supports ATITC Texture Compressed.
      */
-//    bool supportsATITC() const;
+    bool supportsATITC() const;
 
     /** Whether or not BGRA8888 textures are supported.
      *
@@ -153,6 +151,17 @@ public:
      */
     bool supportsOESPackedDepthStencil() const;
 
+    /** Whether or not glMapBuffer() is supported.
+     *
+     * On Desktop it returns `true`.
+     * On Mobile it checks for the extension `GL_OES_mapbuffer`
+     *
+     * @return Whether or not `glMapBuffer()` is supported.
+     * @since v3.13
+     */
+    bool supportsMapBuffer() const;
+
+    
     /** Max support directional light in shader, for Sprite3D.
      *
      * @return Maximum supports directional light in shader.
@@ -221,7 +230,7 @@ public:
     static const char* CONFIG_FILE_LOADED;
 
 private:
-    Configuration();
+    Configuration(void);
     static Configuration    *s_sharedConfiguration;
     static std::string        s_configfile;
 
@@ -230,12 +239,13 @@ protected:
     GLint           _maxModelviewStackDepth;
     bool            _supportsPVRTC;
     bool            _supportsETC1;
-//    bool            _supportsS3TC;
-//    bool            _supportsATITC;
+    bool            _supportsS3TC;
+    bool            _supportsATITC;
     bool            _supportsNPOT;
     bool            _supportsBGRA8888;
     bool            _supportsDiscardFramebuffer;
     bool            _supportsShareableVAO;
+    bool            _supportsOESMapBuffer;
     bool            _supportsOESDepth24;
     bool            _supportsOESPackedDepthStencil;
     GLint           _maxSamplesAllowed;
@@ -246,8 +256,6 @@ protected:
     int             _maxSpotLightInShader; // max support spot light in shader
 
     ValueMap        _valueDict;
-
-    EventCustom*    _loadedEvent;
 };
 
 
@@ -256,4 +264,3 @@ NS_CC_END
 /// @}
 
 #endif // __CCCONFIGURATION_H__
-

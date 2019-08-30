@@ -1,5 +1,6 @@
 /****************************************************************************
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -39,19 +40,23 @@ public class Cocos2dxLocalStorage {
 
     private static DBOpenHelper mDatabaseOpenHelper = null;
     private static SQLiteDatabase mDatabase = null;
-
+    /**
+     * Constructor
+     * @param context The Context within which to work, used to create the DB
+     * @return 
+     */
     public static boolean init(String dbName, String tableName) {
-        if (Cocos2dxActivity.COCOS_ACTIVITY != null) {
+        if (Cocos2dxActivity.getContext() != null) {
             DATABASE_NAME = dbName;
             TABLE_NAME = tableName;
-            mDatabaseOpenHelper = new DBOpenHelper(Cocos2dxActivity.COCOS_ACTIVITY);
+            mDatabaseOpenHelper = new DBOpenHelper(Cocos2dxActivity.getContext());
             mDatabase = mDatabaseOpenHelper.getWritableDatabase();
             return true;
         }
         return false;
     }
-
-    public static void destory() {
+    
+    public static void destroy() {
         if (mDatabase != null) {
             mDatabase.close();
         }
@@ -105,6 +110,45 @@ public class Cocos2dxLocalStorage {
         }
     }
 
+    public static String getKey(int nIndex) {
+        String ret = null;
+        try {
+            int nCount = 0;
+            String sql = "select key from "+TABLE_NAME + " order by rowid asc";
+            Cursor c = mDatabase.rawQuery(sql, null);
+            if(nIndex < 0 || nIndex >= c.getCount()) {
+                return null;
+            }
+
+            while (c.moveToNext()) {
+                if(nCount == nIndex) {
+                    ret = c.getString(c.getColumnIndex("key"));
+                    break;
+                }
+                nCount++;
+            }
+            c.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return ret;
+    }
+
+    public  static int getLength() {
+        int res = 0;
+        try {
+            String sql = "select count(*) as nums from "+TABLE_NAME;
+            Cursor c = mDatabase.rawQuery(sql, null);
+            if (c.moveToNext()){
+                res = c.getInt(c.getColumnIndex("nums"));
+            }
+            c.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return res;
+    }
+
     /**
      * This creates/opens the database.
      */
@@ -121,8 +165,10 @@ public class Cocos2dxLocalStorage {
 
         @Override
         public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-
+            Log.w(TAG, "Upgrading database from version " + oldVersion + " to "
+                    + newVersion + ", which will destroy all old data");
+            //db.execSQL("DROP TABLE IF EXISTS " + VIRTUAL_TABLE);
+            //onCreate(db);
         }
     }
 }
-

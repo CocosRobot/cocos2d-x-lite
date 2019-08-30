@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2012 cocos2d-x.org
-Copyright (c) 2013-2016 Chukong Technologies
+Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -56,21 +57,22 @@ THE SOFTWARE.
 // Determine target platform by compile environment macro.
 #define CC_TARGET_PLATFORM             CC_PLATFORM_UNKNOWN
 
-// android
-#if defined(ANDROID)
-    #undef  CC_TARGET_PLATFORM
-    #define CC_TARGET_PLATFORM         CC_PLATFORM_ANDROID
 // Apple: Mac and iOS
-#elif defined(__APPLE__)
+#if defined(__APPLE__) && !defined(ANDROID) // exclude android for binding generator.
     #include <TargetConditionals.h>
-    //// TARGET_OS_IPHONE inlcudes TARGET_OS_IOS TARGET_OS_TV and TARGET_OS_WATCH. see TargetConditionals.h
-    #if TARGET_OS_IPHONE
+    #if TARGET_OS_IPHONE // TARGET_OS_IPHONE includes TARGET_OS_IOS TARGET_OS_TV and TARGET_OS_WATCH. see TargetConditionals.h
         #undef  CC_TARGET_PLATFORM
         #define CC_TARGET_PLATFORM         CC_PLATFORM_IOS
     #elif TARGET_OS_MAC
         #undef  CC_TARGET_PLATFORM
         #define CC_TARGET_PLATFORM         CC_PLATFORM_MAC
     #endif
+#endif
+
+// android
+#if defined(ANDROID)
+    #undef  CC_TARGET_PLATFORM
+    #define CC_TARGET_PLATFORM         CC_PLATFORM_ANDROID
 #endif
 
 // win32
@@ -150,4 +152,3 @@ THE SOFTWARE.
 
 /// @endcond
 #endif  // __BASE_CC_PLATFORM_CONFIG_H__
-

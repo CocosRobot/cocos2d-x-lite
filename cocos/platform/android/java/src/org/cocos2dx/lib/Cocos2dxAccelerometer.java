@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2013 cocos2d-x.org
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -25,30 +26,47 @@ THE SOFTWARE.
 package org.cocos2dx.lib;
 
 import android.content.Context;
-import android.content.res.Configuration;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.view.Display;
-import android.view.Surface;
-import android.view.WindowManager;
 
 public class Cocos2dxAccelerometer implements SensorEventListener {
     // ===========================================================
     // Constants
     // ===========================================================
 
-    private static final String TAG = "Cocos2dxAccelerometer";
+    private static final String TAG = Cocos2dxAccelerometer.class.getSimpleName();
 
     // ===========================================================
     // Fields
     // ===========================================================
-
     private final Context mContext;
     private final SensorManager mSensorManager;
-    private final Sensor mAccelerometer;
-    private final int mNaturalOrientation;
+    private final Sensor mAcceleration;
+    private final Sensor mAccelerationIncludingGravity;
+    private final Sensor mGyroscope;
+    private int mSamplingPeriodUs = SensorManager.SENSOR_DELAY_GAME;
+
+    class Acceleration {
+        public float x = 0.0f;
+        public float y = 0.0f;
+        public float z = 0.0f;
+    }
+
+    class RotationRate {
+        public float alpha = 0.0f;
+        public float beta = 0.0f;
+        public float gamma = 0.0f;
+    }
+
+    class DeviceMotionEvent {
+        public Acceleration acceleration = new Acceleration();
+        public Acceleration accelerationIncludingGravity = new Acceleration();
+        public RotationRate rotationRate = new RotationRate();
+    }
+
+    private DeviceMotionEvent mDeviceMotionEvent = new DeviceMotionEvent();
 
     // ===========================================================
     // Constructors
@@ -58,62 +76,58 @@ public class Cocos2dxAccelerometer implements SensorEventListener {
         mContext = context;
 
         mSensorManager = (SensorManager) mContext.getSystemService(Context.SENSOR_SERVICE);
-        mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-
-        final Display display = ((WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
-        mNaturalOrientation = display.getOrientation();
+        mAcceleration = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        mAccelerationIncludingGravity = mSensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
+        mGyroscope = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
     }
 
+    // ===========================================================
+    // Getter & Setter
+    // ===========================================================
     public void enable() {
-        mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_GAME);
-    }
-
-    public void setInterval(float interval) {
-        // Honeycomb version is 11
-        if(android.os.Build.VERSION.SDK_INT < 11) {
-            mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_GAME);
-        } else {
-            //convert seconds to microseconds
-            mSensorManager.registerListener(this, mAccelerometer, (int)(interval*100000));
-        }
+        mSensorManager.registerListener(this, mAcceleration, mSamplingPeriodUs);
+        mSensorManager.registerListener(this, mAccelerationIncludingGravity, mSamplingPeriodUs);
+        mSensorManager.registerListener(this, mGyroscope, mSamplingPeriodUs);
     }
 
     public void disable() {
-        mSensorManager.unregisterListener(this);
+        this.mSensorManager.unregisterListener(this);
+    }
+
+    public void setInterval(float interval) {
+        if (android.os.Build.VERSION.SDK_INT >= 11) {
+            mSamplingPeriodUs = (int) (interval * 1000000);
+        }
+        disable();
+        enable();
+    }
+
+    public DeviceMotionEvent getDeviceMotionEvent() {
+        return mDeviceMotionEvent;
     }
 
     // ===========================================================
     // Methods for/from SuperClass/Interfaces
     // ===========================================================
-
     @Override
     public void onSensorChanged(final SensorEvent sensorEvent) {
-        if (sensorEvent.sensor.getType() != Sensor.TYPE_ACCELEROMETER) {
-            return;
+        int type = sensorEvent.sensor.getType();
+        if (type == Sensor.TYPE_ACCELEROMETER) {
+            mDeviceMotionEvent.accelerationIncludingGravity.x = sensorEvent.values[0];
+            mDeviceMotionEvent.accelerationIncludingGravity.y = sensorEvent.values[1];
+            mDeviceMotionEvent.accelerationIncludingGravity.z = sensorEvent.values[2];
         }
-
-        float x = sensorEvent.values[0];
-        float y = sensorEvent.values[1];
-        final float z = sensorEvent.values[2];
-
-        /*
-         * Because the axes are not swapped when the device's screen orientation
-         * changes. So we should swap it here. In tablets such as Motorola Xoom,
-         * the default orientation is landscape, so should consider this.
-         */
-        final int orientation = mContext.getResources().getConfiguration().orientation;
-
-        if ((orientation == Configuration.ORIENTATION_LANDSCAPE) && (mNaturalOrientation != Surface.ROTATION_0)) {
-            final float tmp = x;
-            x = -y;
-            y = tmp;
-        } else if ((orientation == Configuration.ORIENTATION_PORTRAIT) && (mNaturalOrientation != Surface.ROTATION_0)) {
-            final float tmp = x;
-            x = y;
-            y = -tmp;
+        else if (type == Sensor.TYPE_LINEAR_ACCELERATION) {
+            mDeviceMotionEvent.acceleration.x = sensorEvent.values[0];
+            mDeviceMotionEvent.acceleration.y = sensorEvent.values[1];
+            mDeviceMotionEvent.acceleration.z = sensorEvent.values[2];
         }
-
-        Cocos2dxGLSurfaceView.queueAccelerometer(x,y,z,sensorEvent.timestamp);
+        else if (type == Sensor.TYPE_GYROSCOPE) {
+            // The unit is rad/s, need to be converted to deg/s
+            mDeviceMotionEvent.rotationRate.alpha = (float)Math.toDegrees(sensorEvent.values[0]);
+            mDeviceMotionEvent.rotationRate.beta = (float)Math.toDegrees(sensorEvent.values[1]);
+            mDeviceMotionEvent.rotationRate.gamma = (float)Math.toDegrees(sensorEvent.values[2]);
+        }
     }
 
     @Override
@@ -126,5 +140,8 @@ public class Cocos2dxAccelerometer implements SensorEventListener {
     // ===========================================================
 
     public static native void onSensorChanged(final float x, final float y, final float z, final long timestamp);
-}
 
+    // ===========================================================
+    // Inner and Anonymous Classes
+    // ===========================================================
+}

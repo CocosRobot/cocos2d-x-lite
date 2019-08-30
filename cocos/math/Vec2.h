@@ -1,6 +1,7 @@
 /**
  Copyright 2013 BlackBerry Inc.
- Copyright (c) 2014-2016 Chukong Technologies
+ Copyright (c) 2014-2016 Chukong Technologies Inc.
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -24,7 +25,7 @@
 
 #include <algorithm>
 #include <functional>
-#include <math.h>
+#include <cmath>
 #include "math/CCMathBase.h"
 
 /**
@@ -766,7 +767,6 @@ NS_CC_MATH_END
  @}
  */
 
-#include "Vec2.inl"
+#include "math/Vec2.inl"
 
 #endif // MATH_VEC2_H
-

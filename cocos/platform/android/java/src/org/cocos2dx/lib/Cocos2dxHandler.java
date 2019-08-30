@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2013 cocos2d-x.org
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -25,7 +26,6 @@ THE SOFTWARE.
 
 package org.cocos2dx.lib;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.os.Handler;
@@ -42,15 +42,23 @@ public class Cocos2dxHandler extends Handler {
     // ===========================================================
     // Fields
     // ===========================================================
-    private WeakReference<Activity> mActivityReference;
-
+    private WeakReference<Cocos2dxActivity> mActivity;
+    
     // ===========================================================
     // Constructors
     // ===========================================================
-    public Cocos2dxHandler(Activity activity) {
-        mActivityReference = new WeakReference<Activity>(activity);
+    public Cocos2dxHandler(Cocos2dxActivity activity) {
+        this.mActivity = new WeakReference<Cocos2dxActivity>(activity);
     }
 
+    // ===========================================================
+    // Getter & Setter
+    // ===========================================================
+
+    // ===========================================================
+    // Methods for/from SuperClass/Interfaces
+    // ===========================================================
+    
     // ===========================================================
     // Methods
     // ===========================================================
@@ -64,17 +72,17 @@ public class Cocos2dxHandler extends Handler {
     }
 
     private void showDialog(Message msg) {
-        Activity theActivity = mActivityReference.get();
+        Cocos2dxActivity theActivity = this.mActivity.get();
         DialogMessage dialogMessage = (DialogMessage)msg.obj;
         new AlertDialog.Builder(theActivity)
-        .setTitle(dialogMessage.mTitle)
-        .setMessage(dialogMessage.mMessage)
-        .setPositiveButton("Ok",
+        .setTitle(dialogMessage.title)
+        .setMessage(dialogMessage.message)
+        .setPositiveButton("Ok", 
                 new DialogInterface.OnClickListener() {
 
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        // TODO Auto-generated method stub
+                        // REFINE: Auto-generated method stub
 
                     }
                 }).create().show();
@@ -85,13 +93,12 @@ public class Cocos2dxHandler extends Handler {
     // ===========================================================
 
     public static class DialogMessage {
-        public String mTitle;
-        public String mMessage;
-
+        public String title;
+        public String message;
+        
         public DialogMessage(String title, String message) {
-            mTitle = title;
-            mMessage = message;
+            this.title = title;
+            this.message = message;
         }
     }
 }
-

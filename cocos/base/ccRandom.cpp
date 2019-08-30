@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010      cocos2d-x.org
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -23,11 +24,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-#include "ccRandom.h"
-
-std::mt19937 &cocos2d::RandomHelper::getEngine() {
-    static std::random_device seed_gen;
-    static std::mt19937 engine(seed_gen());
-    return engine;
-}
-
+#include "base/ccRandom.h"

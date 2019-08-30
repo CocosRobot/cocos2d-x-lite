@@ -1,5 +1,6 @@
 /****************************************************************************
  Copyright (c) 2013-2016 Chukong Technologies Inc.
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
  http://www.cocos2d-x.org
 
@@ -25,6 +26,9 @@
 #ifndef HTTP_COOKIE_H
 #define HTTP_COOKIE_H
 /// @cond DO_NOT_SHOW
+
+#include<string>
+#include<vector>
 
 struct CookiesInfo
 {

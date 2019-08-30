@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2012 cocos2d-x.org
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -30,7 +31,27 @@ import android.graphics.Typeface;
 import java.util.HashMap;
 
 public class Cocos2dxTypefaces {
+    // ===========================================================
+    // Constants
+    // ===========================================================
+
+    // ===========================================================
+    // Fields
+    // ===========================================================
+
     private static final HashMap<String, Typeface> sTypefaceCache = new HashMap<String, Typeface>();
+
+    // ===========================================================
+    // Constructors
+    // ===========================================================
+
+    // ===========================================================
+    // Getter & Setter
+    // ===========================================================
+
+    // ===========================================================
+    // Methods for/from SuperClass/Interfaces
+    // ===========================================================
 
     // ===========================================================
     // Methods
@@ -38,7 +59,7 @@ public class Cocos2dxTypefaces {
 
     public static synchronized Typeface get(final Context context, final String assetName) {
         if (!Cocos2dxTypefaces.sTypefaceCache.containsKey(assetName)) {
-            Typeface typeface;
+            Typeface typeface = null;
             if (assetName.startsWith("/"))
             {
                 typeface = Typeface.createFromFile(assetName);
@@ -52,5 +73,9 @@ public class Cocos2dxTypefaces {
 
         return Cocos2dxTypefaces.sTypefaceCache.get(assetName);
     }
-}
 
+    // ===========================================================
+    // Inner and Anonymous Classes
+    // ===========================================================
+
+}

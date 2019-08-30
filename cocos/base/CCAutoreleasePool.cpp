@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2012 cocos2d-x.org
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -112,25 +113,15 @@ PoolManager* PoolManager::getInstance()
     {
         s_singleInstance = new (std::nothrow) PoolManager();
         // Add the first auto release pool
-        new (std::nothrow) AutoreleasePool("cocos2d autorelease pool");
+        new (std::nothrow) AutoreleasePool("autorelease pool");
     }
     return s_singleInstance;
 }
 
 void PoolManager::destroyInstance()
 {
-    if (s_singleInstance) {
-        auto& releasePoolStack = s_singleInstance->_releasePoolStack;
-        AutoreleasePool* pool = nullptr;
-        while (!releasePoolStack.empty())
-        {
-            pool = releasePoolStack.back();
-            delete pool;
-        }
-
-        delete s_singleInstance;
-        s_singleInstance = nullptr;
-    }
+    delete s_singleInstance;
+    s_singleInstance = nullptr;
 }
 
 PoolManager::PoolManager()
@@ -141,6 +132,13 @@ PoolManager::PoolManager()
 PoolManager::~PoolManager()
 {
     CCLOGINFO("deallocing PoolManager: %p", this);
+
+    while (!_releasePoolStack.empty())
+    {
+        AutoreleasePool* pool = _releasePoolStack.back();
+        
+        delete pool;
+    }
 }
 
 
@@ -171,4 +169,3 @@ void PoolManager::pop()
 }
 
 NS_CC_END
-

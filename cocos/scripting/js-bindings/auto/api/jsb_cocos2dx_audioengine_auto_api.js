@@ -1,5 +1,5 @@
 /**
- * @module cocos2dx_audioengine
+ * @module audioengine
  */
 var jsb = jsb || {};
 
@@ -115,6 +115,28 @@ getMaxAudioInstance : function (
 },
 
 /**
+ * @method isEnabled
+ * @return {bool}
+ */
+isEnabled : function (
+)
+{
+    return false;
+},
+
+/**
+ * @method getDurationFromFile
+ * @param {String} arg0
+ * @return {float}
+ */
+getDurationFromFile : function (
+str 
+)
+{
+    return 0;
+},
+
+/**
  * @method getCurrentTime
  * @param {int} arg0
  * @return {float}
@@ -191,11 +213,21 @@ func
 },
 
 /**
+ * @method setEnabled
+ * @param {bool} arg0
+ */
+setEnabled : function (
+bool 
+)
+{
+},
+
+/**
  * @method play2d
  * @param {String} arg0
  * @param {bool} arg1
  * @param {float} arg2
- * @param {cc.experimental::AudioProfile} arg3
+ * @param {cc.AudioProfile} arg3
  * @return {int}
  */
 play2d : function (
@@ -211,7 +243,7 @@ audioprofile
 /**
  * @method getState
  * @param {int} arg0
- * @return {cc.experimental::AudioEngine::AudioState}
+ * @return {cc.AudioEngine::AudioState}
  */
 getState : function (
 int 
@@ -266,12 +298,12 @@ bool
 
 /**
  * @method getDefaultProfile
- * @return {cc.experimental::AudioProfile}
+ * @return {cc.AudioProfile}
  */
 getDefaultProfile : function (
 )
 {
-    return cc.experimental::AudioProfile;
+    return cc.AudioProfile;
 },
 
 /**
@@ -289,13 +321,23 @@ func
 /**
  * @method getProfile
 * @param {String|int} str
-* @return {cc.experimental::AudioProfile|cc.experimental::AudioProfile}
+* @return {cc.AudioProfile|cc.AudioProfile}
 */
 getProfile : function(
 int 
 )
 {
-    return cc.experimental::AudioProfile;
+    return cc.AudioProfile;
+},
+
+/**
+ * @method getPlayingAudioCount
+ * @return {int}
+ */
+getPlayingAudioCount : function (
+)
+{
+    return 0;
 },
 
 };

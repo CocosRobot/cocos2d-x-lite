@@ -1,5 +1,6 @@
 /****************************************************************************
- Copyright (c) 2013-2016 Chukong Technologies
+ Copyright (c) 2013-2016 Chukong Technologies Inc.
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
  http://www.cocos2d-x.org
 
@@ -21,14 +22,10 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
  ****************************************************************************/
-
-#ifndef __CCMAP_H__
-#define __CCMAP_H__
+#pragma once
 
 #define USE_STD_UNORDERED_MAP 1
 
-#include "base/ccMacros.h"
-#include "base/CCRef.h"
 #include <vector>
 
 #if USE_STD_UNORDERED_MAP
@@ -37,6 +34,9 @@
 #include <map>
 #endif
 
+#include "base/ccMacros.h"
+#include "base/ccRandom.h"
+#include "base/CCRef.h"
 
 /**
  * @addtogroup base
@@ -66,10 +66,10 @@ public:
     // ------------------------------------------
 
     /** Iterator, can be used to loop the Map. */
-    using iterator = typename RefMap::iterator;
+    typedef typename RefMap::iterator iterator;
     /** Const iterator, can be used to loop the Map. */
-    using const_iterator = typename RefMap::const_iterator;
-
+    typedef typename RefMap::const_iterator const_iterator;
+    
     /** Return iterator to beginning. */
     iterator begin() { return _data.begin(); }
     /** Return const_iterator to beginning. */
@@ -420,6 +420,3 @@ protected:
 NS_CC_END
 // end group
 /// @}
-
-#endif /* __CCMAP_H__ */
-

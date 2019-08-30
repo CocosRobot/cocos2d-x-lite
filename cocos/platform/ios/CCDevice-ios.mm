@@ -1,6 +1,7 @@
 /****************************************************************************
  Copyright (c) 2010-2012 cocos2d-x.org
  Copyright (c) 2013-2016 Chukong Technologies Inc.
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
  http://www.cocos2d-x.org
 
@@ -22,125 +23,142 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
  ****************************************************************************/
-
-
-#include "platform/CCPlatformConfig.h"
-#if CC_TARGET_PLATFORM == CC_PLATFORM_IOS
-
-#include "CCDevice.h"
-#include "base/ccTypes.h"
-#include "base/CCEventDispatcher.h"
-#include "base/CCEventAcceleration.h"
-#include "base/CCDirector.h"
-#import <UIKit/UIKit.h>
-
-// Accelerometer
-#import<CoreMotion/CoreMotion.h>
-#import<CoreFoundation/CoreFoundation.h>
+#include "CCApplication.h"
+#include "platform/CCDevice.h"
+#include "platform/ios/CCEAGLView-ios.h"
 
 // Vibrate
 #import <AudioToolbox/AudioToolbox.h>
+#include "base/ccTypes.h"
+#include "platform/apple/CCDevice-apple.h"
+#include "CCReachability.h"
 
-#define SENSOR_DELAY_GAME 0.02
+#import <UIKit/UIKit.h>
+// Accelerometer
+#import <CoreMotion/CoreMotion.h>
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreText/CoreText.h>
+#include <sys/utsname.h>
 
-@interface CCAccelerometerDispatcher : NSObject<UIAccelerometerDelegate>
+static const float g = 9.80665;
+static const float radToDeg = (180/M_PI);
+
+@interface CCMotionDispatcher : NSObject<UIAccelerometerDelegate>
 {
-    cocos2d::Acceleration *_acceleration;
-    CMMotionManager *_motionManager;
+    CMMotionManager* _motionManager;
+    cocos2d::Device::MotionValue _motionValue;
+    float _interval; // unit: seconds
+    bool _enabled;
 }
 
-+ (id) sharedAccelerometerDispatcher;
++ (id) sharedMotionDispatcher;
 - (id) init;
-- (void) setAccelerometerEnabled: (bool) isEnabled;
-- (void) setAccelerometerInterval:(float) interval;
+- (void) setMotionEnabled: (bool) isEnabled;
+- (void) setMotionInterval:(float) interval;
 
 @end
 
-@implementation CCAccelerometerDispatcher
+@implementation CCMotionDispatcher
 
-static CCAccelerometerDispatcher* s_pAccelerometerDispatcher;
+static CCMotionDispatcher* __motionDispatcher = nullptr;
 
-+ (id) sharedAccelerometerDispatcher
++ (id) sharedMotionDispatcher
 {
-    if (s_pAccelerometerDispatcher == nil) {
-        s_pAccelerometerDispatcher = [[self alloc] init];
+    if (__motionDispatcher == nil) {
+        __motionDispatcher = [[CCMotionDispatcher alloc] init];
     }
 
-    return s_pAccelerometerDispatcher;
+    return __motionDispatcher;
 }
 
 - (id) init
 {
     if( (self = [super init]) ) {
-        _acceleration = new (std::nothrow) cocos2d::Acceleration();
+        _enabled = false;
+        _interval = 1.0f / 60.0f;
         _motionManager = [[CMMotionManager alloc] init];
-        _motionManager.accelerometerUpdateInterval = SENSOR_DELAY_GAME;
     }
     return self;
 }
 
 - (void) dealloc
 {
-    s_pAccelerometerDispatcher = nullptr;
-    delete _acceleration;
+    __motionDispatcher = nullptr;
     [_motionManager release];
     [super dealloc];
 }
 
-- (void) setAccelerometerEnabled: (bool) isEnabled
+- (void) setMotionEnabled: (bool) enabled
 {
-    if (isEnabled)
+    if (_enabled == enabled)
+        return;
+
+    bool isDeviceMotionAvailable = _motionManager.isDeviceMotionAvailable;
+    if (enabled)
     {
-        [_motionManager startAccelerometerUpdatesToQueue:[NSOperationQueue currentQueue] withHandler:^(CMAccelerometerData *accelerometerData, NSError *error) {
-            [self accelerometer:accelerometerData];
-        }];
+        // Has Gyro? (iPhone4 and newer)
+        if (isDeviceMotionAvailable) {
+            [_motionManager startDeviceMotionUpdates];
+            _motionManager.deviceMotionUpdateInterval = _interval;
+        }
+        // Only basic accelerometer data
+        else {
+            [_motionManager startAccelerometerUpdates];
+            _motionManager.accelerometerUpdateInterval = _interval;
+        }
     }
     else
     {
-        [_motionManager stopAccelerometerUpdates];
+        // Has Gyro? (iPhone4 and newer)
+        if (isDeviceMotionAvailable) {
+            [_motionManager stopDeviceMotionUpdates];
+        }
+        // Only basic accelerometer data
+        else {
+            [_motionManager stopAccelerometerUpdates];
+        }
     }
+    _enabled = enabled;
 }
 
--(void) setAccelerometerInterval:(float)interval
+-(void) setMotionInterval:(float)interval
 {
-    _motionManager.accelerometerUpdateInterval = interval;
-}
-
-- (void)accelerometer:(CMAccelerometerData *)accelerometerData
-{
-    _acceleration->x = accelerometerData.acceleration.x;
-    _acceleration->y = accelerometerData.acceleration.y;
-    _acceleration->z = accelerometerData.acceleration.z;
-    _acceleration->timestamp = accelerometerData.timestamp;
-
-    double tmp = _acceleration->x;
-
-    switch ([[UIApplication sharedApplication] statusBarOrientation])
+    _interval = interval;
+    if (_enabled)
     {
-        case UIInterfaceOrientationLandscapeRight:
-            _acceleration->x = -_acceleration->y;
-            _acceleration->y = tmp;
-            break;
+        if (_motionManager.isDeviceMotionAvailable) {
+            _motionManager.deviceMotionUpdateInterval = _interval;
+        }
+        else {
+            _motionManager.accelerometerUpdateInterval = _interval;
+        }
+    }
+}
 
-        case UIInterfaceOrientationLandscapeLeft:
-            _acceleration->x = _acceleration->y;
-            _acceleration->y = -tmp;
-            break;
+-(const cocos2d::Device::MotionValue&) getMotionValue {
 
-        case UIInterfaceOrientationPortraitUpsideDown:
-            _acceleration->x = -_acceleration->y;
-            _acceleration->y = -tmp;
-            break;
+    if (_motionManager.isDeviceMotionAvailable) {
+        CMDeviceMotion* motion = _motionManager.deviceMotion;
+        _motionValue.accelerationX = motion.userAcceleration.x * g;
+        _motionValue.accelerationY = motion.userAcceleration.y * g;
+        _motionValue.accelerationZ = motion.userAcceleration.z * g;
 
-        case UIInterfaceOrientationPortrait:
-            break;
-        default:
-            NSAssert(false, @"unknow orientation");
+        _motionValue.accelerationIncludingGravityX = (motion.userAcceleration.x + motion.gravity.x) * g;
+        _motionValue.accelerationIncludingGravityY = (motion.userAcceleration.y + motion.gravity.y) * g;
+        _motionValue.accelerationIncludingGravityZ = (motion.userAcceleration.z + motion.gravity.z) * g;
+
+        _motionValue.rotationRateAlpha = motion.rotationRate.x * radToDeg;
+        _motionValue.rotationRateBeta = motion.rotationRate.y * radToDeg;
+        _motionValue.rotationRateGamma = motion.rotationRate.z * radToDeg;
+    }
+    else {
+        CMAccelerometerData* acc = _motionManager.accelerometerData;
+        _motionValue.accelerationIncludingGravityX = acc.acceleration.x * g;
+        _motionValue.accelerationIncludingGravityY = acc.acceleration.y * g;
+        _motionValue.accelerationIncludingGravityZ = acc.acceleration.z * g;
     }
 
-    cocos2d::EventAcceleration event(*_acceleration);
-    auto dispatcher = cocos2d::Director::DirectorInstance->getEventDispatcher();
-    dispatcher->dispatchEvent(&event);
+    return _motionValue;
 }
 
 @end
@@ -173,286 +191,63 @@ int Device::getDPI()
 }
 
 
-
-
 void Device::setAccelerometerEnabled(bool isEnabled)
 {
-    [[CCAccelerometerDispatcher sharedAccelerometerDispatcher] setAccelerometerEnabled:isEnabled];
+#if !defined(CC_TARGET_OS_TVOS)
+    [[CCMotionDispatcher sharedMotionDispatcher] setMotionEnabled:isEnabled];
+#endif
 }
 
 void Device::setAccelerometerInterval(float interval)
 {
-    [[CCAccelerometerDispatcher sharedAccelerometerDispatcher] setAccelerometerInterval:interval];
+#if !defined(CC_TARGET_OS_TVOS)
+    [[CCMotionDispatcher sharedMotionDispatcher] setMotionInterval:interval];
+#endif
 }
 
-typedef struct
+const Device::MotionValue& Device::getDeviceMotionValue()
 {
-    unsigned int height;
-    unsigned int width;
-    bool         isPremultipliedAlpha;
-    bool         hasShadow;
-    CGSize       shadowOffset;
-    float        shadowBlur;
-    float        shadowOpacity;
-    bool         hasStroke;
-    float        strokeColorR;
-    float        strokeColorG;
-    float        strokeColorB;
-    float        strokeColorA;
-    float        strokeSize;
-    float        tintColorR;
-    float        tintColorG;
-    float        tintColorB;
-    float        tintColorA;
-
-    unsigned char*  data;
-
-} tImageInfo;
-
-static CGSize _calculateStringSize(NSString *str, id font, CGSize *constrainSize)
-{
-    CGSize textRect = CGSizeZero;
-    textRect.width = constrainSize->width > 0 ? constrainSize->width
-    : 0x7fffffff;
-    textRect.height = constrainSize->height > 0 ? constrainSize->height
-    : 0x7fffffff;
-
-    CGSize dim;
-    NSDictionary *attibutes = @{NSFontAttributeName:font};
-    dim = [str boundingRectWithSize:textRect options:(NSStringDrawingOptions)(NSStringDrawingUsesLineFragmentOrigin) attributes:attibutes context:nil].size;
-
-    dim.width = ceilf(dim.width);
-    dim.height = ceilf(dim.height);
-
-    return dim;
+#if !defined(CC_TARGET_OS_TVOS)
+    return [[CCMotionDispatcher sharedMotionDispatcher] getMotionValue];
+#else
+    static Device::MotionValue ret;
+    return ret;
+#endif
 }
 
-// refer Image::ETextAlign
-#define ALIGN_TOP    1
-#define ALIGN_CENTER 3
-#define ALIGN_BOTTOM 2
-
-static bool _initWithString(const char * text, cocos2d::Device::TextAlign align, const char * fontName, int size, tImageInfo* info)
+Device::Rotation Device::getDeviceRotation()
 {
-    bool bRet = false;
-    do
+    Rotation ret = Device::Rotation::_0;
+    switch ([[UIApplication sharedApplication] statusBarOrientation])
     {
-        CC_BREAK_IF(! text || ! info);
-
-        NSString * str          = [NSString stringWithUTF8String:text];
-        NSString * fntName      = [NSString stringWithUTF8String:fontName];
-
-        CGSize dim, constrainSize;
-
-        constrainSize.width     = info->width;
-        constrainSize.height    = info->height;
-
-        // On iOS custom fonts must be listed beforehand in the App info.plist (in order to be usable) and referenced only the by the font family name itself when
-        // calling [UIFont fontWithName]. Therefore even if the developer adds 'SomeFont.ttf' or 'fonts/SomeFont.ttf' to the App .plist, the font must
-        // be referenced as 'SomeFont' when calling [UIFont fontWithName]. Hence we strip out the folder path components and the extension here in order to get just
-        // the font family name itself. This stripping step is required especially for references to user fonts stored in CCB files; CCB files appear to store
-        // the '.ttf' extensions when referring to custom fonts.
-        fntName = [[fntName lastPathComponent] stringByDeletingPathExtension];
-
-        // create the font
-        UIFont* font = [UIFont fontWithName:fntName size:size];
-        if(font == nil)
-        {
-            font = [UIFont systemFontOfSize:size];
-        }
-        CC_BREAK_IF(! font);
-
-        dim = _calculateStringSize(str, font, &constrainSize);
-
-        // compute start point
-        int startH = 0;
-        if (constrainSize.height > dim.height)
-        {
-            // vertical alignment
-            unsigned int vAlignment = ((int)align >> 4) & 0x0F;
-            if (vAlignment == ALIGN_TOP)
-            {
-                startH = 0;
-            }
-            else if (vAlignment == ALIGN_CENTER)
-            {
-                startH = (constrainSize.height - dim.height) / 2;
-            }
-            else
-            {
-                startH = constrainSize.height - dim.height;
-            }
-        }
-
-        // adjust text rect
-        if (constrainSize.width > 0 && constrainSize.width > dim.width)
-        {
-            dim.width = constrainSize.width;
-        }
-        if (constrainSize.height > 0 && constrainSize.height > dim.height)
-        {
-            dim.height = constrainSize.height;
-        }
-
-        // compute the padding needed by shadow and stroke
-        float shadowStrokePaddingX = 0.0f;
-        float shadowStrokePaddingY = 0.0f;
-
-        if ( info->hasStroke )
-        {
-            shadowStrokePaddingX = ceilf(info->strokeSize);
-            shadowStrokePaddingY = ceilf(info->strokeSize);
-        }
-
-        // add the padding (this could be 0 if no shadow and no stroke)
-        dim.width  += shadowStrokePaddingX*2;
-        dim.height += shadowStrokePaddingY*2;
-
-        unsigned char* data = (unsigned char*)malloc(sizeof(unsigned char) * (int)(dim.width * dim.height * 4));
-        memset(data, 0, (int)(dim.width * dim.height * 4));
-
-        // draw text
-        CGColorSpaceRef colorSpace  = CGColorSpaceCreateDeviceRGB();
-        CGContextRef context        = CGBitmapContextCreate(data,
-                                                            dim.width,
-                                                            dim.height,
-                                                            8,
-                                                            (int)(dim.width) * 4,
-                                                            colorSpace,
-                                                            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
-        if (!context)
-        {
-            CGColorSpaceRelease(colorSpace);
-            CC_SAFE_FREE(data);
+        case UIInterfaceOrientationLandscapeRight:
+            ret = Device::Rotation::_90;
             break;
-        }
 
-        // text color
-        CGContextSetRGBFillColor(context, info->tintColorR, info->tintColorG, info->tintColorB, info->tintColorA);
-        // move Y rendering to the top of the image
-        CGContextTranslateCTM(context, 0.0f, (dim.height - shadowStrokePaddingY) );
-        CGContextScaleCTM(context, 1.0f, -1.0f); //NOTE: NSString draws in UIKit referential i.e. renders upside-down compared to CGBitmapContext referential
-
-        // store the current context
-        UIGraphicsPushContext(context);
-
-        // measure text size with specified font and determine the rectangle to draw text in
-        unsigned uHoriFlag = (int)align & 0x0f;
-        NSTextAlignment nsAlign = (2 == uHoriFlag) ? NSTextAlignmentRight
-                                                  : (3 == uHoriFlag) ? NSTextAlignmentCenter
-                                                  : NSTextAlignmentLeft;
-
-
-        CGColorSpaceRelease(colorSpace);
-
-        // compute the rect used for rendering the text
-        // based on wether shadows or stroke are enabled
-
-        float textOriginX  = 0;
-        float textOrigingY = startH;
-
-        float textWidth    = dim.width;
-        float textHeight   = dim.height;
-
-        CGRect rect = CGRectMake(textOriginX, textOrigingY, textWidth, textHeight);
-
-        CGContextSetShouldSubpixelQuantizeFonts(context, false);
-
-        CGContextBeginTransparencyLayerWithRect(context, rect, NULL);
-
-
-        NSMutableParagraphStyle *paragraphStyle = [[NSMutableParagraphStyle alloc] init];
-        paragraphStyle.alignment = nsAlign;
-        paragraphStyle.lineBreakMode = NSLineBreakByWordWrapping;
-        if ( info->hasStroke )
-        {
-            CGContextSetTextDrawingMode(context, kCGTextStroke);
-
-            [str drawInRect:rect withAttributes:@{
-                                                  NSFontAttributeName: font,
-                                                  NSStrokeWidthAttributeName: [NSNumber numberWithFloat: info->strokeSize / size * 100 ],
-                                                  NSForegroundColorAttributeName:[UIColor colorWithRed:info->tintColorR
-                                                                                                 green:info->tintColorG
-                                                                                                  blue:info->tintColorB
-                                                                                                 alpha:info->tintColorA],
-                                                  NSParagraphStyleAttributeName:paragraphStyle,
-                                                  NSStrokeColorAttributeName: [UIColor colorWithRed:info->strokeColorR
-                                                                                              green:info->strokeColorG
-                                                                                               blue:info->strokeColorB
-                                                                                              alpha:info->strokeColorA]
-                                                  }
-             ];
-        }
-
-        CGContextSetTextDrawingMode(context, kCGTextFill);
-        // actually draw the text in the context
-        [str drawInRect:rect withAttributes:@{
-                                              NSFontAttributeName: font,
-                                              NSForegroundColorAttributeName:[UIColor colorWithRed:info->tintColorR
-                                                                                             green:info->tintColorG
-                                                                                              blue:info->tintColorB
-                                                                                             alpha:info->tintColorA],
-                                              NSParagraphStyleAttributeName:paragraphStyle
-                                              }
-         ];
-        [paragraphStyle release];
-
-        CGContextEndTransparencyLayer(context);
-
-        // pop the context
-        UIGraphicsPopContext();
-
-        // release the context
-        CGContextRelease(context);
-
-        // output params
-        info->data                 = data;
-        info->isPremultipliedAlpha = true;
-        info->width                = dim.width;
-        info->height               = dim.height;
-        bRet                        = true;
-
-    } while (0);
-
-    return bRet;
-}
-
-
-Data Device::getTextureDataForText(const std::string& text, const FontDefinition& textDefinition, TextAlign align, int &width, int &height, bool& hasPremultipliedAlpha)
-{
-    Data ret;
-
-    do {
-        tImageInfo info = {0};
-        info.width                  = textDefinition._dimensions.width;
-        info.height                 = textDefinition._dimensions.height;
-        info.hasShadow              = textDefinition._shadow._shadowEnabled;
-        info.shadowOffset.width     = textDefinition._shadow._shadowOffset.width;
-        info.shadowOffset.height    = textDefinition._shadow._shadowOffset.height;
-        info.shadowBlur             = textDefinition._shadow._shadowBlur;
-        info.shadowOpacity          = textDefinition._shadow._shadowOpacity;
-        info.hasStroke              = textDefinition._stroke._strokeEnabled;
-        info.strokeColorR           = textDefinition._stroke._strokeColor.r / 255.0f;
-        info.strokeColorG           = textDefinition._stroke._strokeColor.g / 255.0f;
-        info.strokeColorB           = textDefinition._stroke._strokeColor.b / 255.0f;
-        info.strokeColorA           = textDefinition._stroke._strokeAlpha / 255.0f;
-        info.strokeSize             = textDefinition._stroke._strokeSize;
-        info.tintColorR             = textDefinition._fontFillColor.r / 255.0f;
-        info.tintColorG             = textDefinition._fontFillColor.g / 255.0f;
-        info.tintColorB             = textDefinition._fontFillColor.b / 255.0f;
-        info.tintColorA             = textDefinition._fontAlpha / 255.0f;
-
-        if (! _initWithString(text.c_str(), align, textDefinition._fontName.c_str(), textDefinition._fontSize, &info))
-        {
+        case UIInterfaceOrientationLandscapeLeft:
+            ret = Device::Rotation::_270;
             break;
-        }
-        height = info.height;
-        width = info.width;
-        ret.fastSet(info.data,width * height * 4);
-        hasPremultipliedAlpha = true;
-    } while (0);
+
+        case UIInterfaceOrientationPortraitUpsideDown:
+            ret = Device::Rotation::_180;
+            break;
+
+        case UIInterfaceOrientationPortrait:
+            ret = Device::Rotation::_0;
+            break;
+        default:
+            assert(false);
+            break;
+    }
 
     return ret;
+}
+
+std::string Device::getDeviceModel()
+{
+    struct utsname systemInfo;
+    uname(&systemInfo);
+    return systemInfo.machine;
 }
 
 void Device::setKeepScreenOn(bool value)
@@ -461,7 +256,7 @@ void Device::setKeepScreenOn(bool value)
 }
 
 /*!
- @brief Only works on iOS devices that support vibration (such as iPhone). Shoud only be used for important alerts.  Use risks rejection in iTunes Store.
+ @brief Only works on iOS devices that support vibration (such as iPhone). Should only be used for important alerts. Use risks rejection in iTunes Store.
  @param duration ignored for iOS
  */
 void Device::vibrate(float duration)
@@ -473,7 +268,62 @@ void Device::vibrate(float duration)
     AudioServicesPlayAlertSound(kSystemSoundID_Vibrate);
 }
 
+float Device::getBatteryLevel()
+{
+    return [UIDevice currentDevice].batteryLevel;
+}
+
+Device::NetworkType Device::getNetworkType()
+{
+    static Reachability* __reachability = nullptr;
+    if (__reachability == nullptr)
+    {
+        __reachability = Reachability::createForInternetConnection();
+        __reachability->retain();
+    }
+
+    NetworkType ret = NetworkType::NONE;
+    Reachability::NetworkStatus status = __reachability->getCurrentReachabilityStatus();
+    switch (status) {
+        case Reachability::NetworkStatus::REACHABLE_VIA_WIFI:
+            ret = NetworkType::LAN;
+            break;
+        case Reachability::NetworkStatus::REACHABLE_VIA_WWAN:
+            ret = NetworkType::WWAN;
+            break;
+        default:
+            ret = NetworkType::NONE;
+            break;
+    }
+
+    return ret;
+}
+
+cocos2d::Vec4 Device::getSafeAreaEdge()
+{
+    UIView* screenView = (UIView*)Application::getInstance()->getView();
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 110000
+    float version = [[UIDevice currentDevice].systemVersion floatValue];
+    if (version >= 11.0f)
+    {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpartial-availability"
+        UIEdgeInsets safeAreaEdge = screenView.safeAreaInsets;
+#pragma clang diagnostic pop
+
+        // Multiply contentScaleFactor since safeAreaInsets return points.
+        uint8_t scale = screenView.contentScaleFactor;
+        safeAreaEdge.left *= scale;
+        safeAreaEdge.right *= scale;
+        safeAreaEdge.top *= scale;
+        safeAreaEdge.bottom *= scale;
+
+        return cocos2d::Vec4(safeAreaEdge.top, safeAreaEdge.left, safeAreaEdge.bottom, safeAreaEdge.right);
+    }
+#endif
+
+    // If running on iOS devices lower than 11.0, return ZERO Vec4.
+    return cocos2d::Vec4();
+}
 NS_CC_END
-
-#endif // CC_PLATFORM_IOS
-

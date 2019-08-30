@@ -1,3 +1,28 @@
+/****************************************************************************
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
+
+ http://www.cocos.com
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated engine source code (the "Software"), a limited,
+ worldwide, royalty-free, non-assignable, revocable and non-exclusive license
+ to use Cocos Creator solely to develop games on your target platforms. You shall
+ not use Cocos Creator software for developing other software or tools that's
+ used for developing games. You are not granted to publish, distribute,
+ sublicense, and/or sell copies of Cocos Creator.
+
+ The software or tools in this License Agreement are licensed, not sold.
+ Xiamen Yaji Software Co., Ltd. reserves all rights not expressly granted to you.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ ****************************************************************************/
+
 package org.cocos2dx.lib;
 
 import android.annotation.SuppressLint;
@@ -7,11 +32,31 @@ import android.view.Gravity;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.FrameLayout;
+import android.widget.RelativeLayout;
 
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.util.concurrent.CountDownLatch;
+
+class ShouldStartLoadingWorker implements Runnable {
+    private CountDownLatch mLatch;
+    private boolean[] mResult;
+    private final int mViewTag;
+    private final String mUrlString;
+
+    ShouldStartLoadingWorker(CountDownLatch latch, boolean[] result, int viewTag, String urlString) {
+        this.mLatch = latch;
+        this.mResult = result;
+        this.mViewTag = viewTag;
+        this.mUrlString = urlString;
+    }
+
+    @Override
+    public void run() {
+        this.mResult[0] = Cocos2dxWebViewHelper._shouldStartLoading(mViewTag, mUrlString);
+        this.mLatch.countDown(); // notify that result is ready
+    }
+}
 
 public class Cocos2dxWebView extends WebView {
     private static final String TAG = Cocos2dxWebViewHelper.class.getSimpleName();
@@ -34,6 +79,7 @@ public class Cocos2dxWebView extends WebView {
 
         this.getSettings().setSupportZoom(false);
 
+        this.getSettings().setDomStorageEnabled(true);
         this.getSettings().setJavaScriptEnabled(true);
 
         // `searchBoxJavaBridge_` has big security risk. http://jvn.jp/en/jp/JVN53768697
@@ -59,10 +105,11 @@ public class Cocos2dxWebView extends WebView {
     class Cocos2dxWebViewClient extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, final String urlString) {
-            Cocos2dxActivity activity = Cocos2dxActivity.COCOS_ACTIVITY;
+            Cocos2dxActivity activity = (Cocos2dxActivity)getContext();
+
             try {
                 URI uri = URI.create(urlString);
-                if (uri.getScheme().equals(mJSScheme)) {
+                if (uri != null && uri.getScheme().equals(mJSScheme)) {
                     activity.runOnGLThread(new Runnable() {
                         @Override
                         public void run() {
@@ -94,8 +141,8 @@ public class Cocos2dxWebView extends WebView {
         @Override
         public void onPageFinished(WebView view, final String url) {
             super.onPageFinished(view, url);
-
-            Cocos2dxActivity.COCOS_ACTIVITY.runOnGLThread(new Runnable() {
+            Cocos2dxActivity activity = (Cocos2dxActivity)getContext();
+            activity.runOnGLThread(new Runnable() {
                 @Override
                 public void run() {
                     Cocos2dxWebViewHelper._didFinishLoading(mViewTag, url);
@@ -106,8 +153,8 @@ public class Cocos2dxWebView extends WebView {
         @Override
         public void onReceivedError(WebView view, int errorCode, String description, final String failingUrl) {
             super.onReceivedError(view, errorCode, description, failingUrl);
-
-            Cocos2dxActivity.COCOS_ACTIVITY.runOnGLThread(new Runnable() {
+            Cocos2dxActivity activity = (Cocos2dxActivity)getContext();
+            activity.runOnGLThread(new Runnable() {
                 @Override
                 public void run() {
                     Cocos2dxWebViewHelper._didFailLoading(mViewTag, failingUrl);
@@ -117,34 +164,12 @@ public class Cocos2dxWebView extends WebView {
     }
 
     public void setWebViewRect(int left, int top, int maxWidth, int maxHeight) {
-        FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
+        RelativeLayout.LayoutParams layoutParams = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT,
+                RelativeLayout.LayoutParams.MATCH_PARENT);
         layoutParams.leftMargin = left;
         layoutParams.topMargin = top;
         layoutParams.width = maxWidth;
         layoutParams.height = maxHeight;
-        layoutParams.gravity = Gravity.TOP | Gravity.LEFT;
         this.setLayoutParams(layoutParams);
     }
-
-    class ShouldStartLoadingWorker implements Runnable {
-        private CountDownLatch mLatch;
-        private boolean[] mResult;
-        private final int mViewTag;
-        private final String mUrlString;
-
-        ShouldStartLoadingWorker(CountDownLatch latch, boolean[] result, int viewTag, String urlString) {
-            this.mLatch = latch;
-            this.mResult = result;
-            this.mViewTag = viewTag;
-            this.mUrlString = urlString;
-        }
-
-        @Override
-        public void run() {
-            this.mResult[0] = Cocos2dxWebViewHelper._shouldStartLoading(mViewTag, mUrlString);
-            this.mLatch.countDown(); // notify that result is ready
-        }
-    }
 }
-

@@ -2,6 +2,7 @@
  Copyright (c) 2010-2012 cocos2d-x.org
  Copyright (c) 2011      Zynga Inc.
  Copyright (c) 2013-2016 Chukong Technologies Inc.
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
  http://www.cocos2d-x.org
 
@@ -26,11 +27,12 @@
 #ifndef __CC_FILEUTILS_APPLE_H__
 #define __CC_FILEUTILS_APPLE_H__
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "platform/CCFileUtils.h"
-#include "platform/CCPlatformMacros.h"
+#include "base/ccMacros.h"
 #include "base/ccTypes.h"
 
 NS_CC_BEGIN
@@ -46,7 +48,6 @@ class CC_DLL FileUtilsApple : public FileUtils
 public:
     FileUtilsApple();
     virtual ~FileUtilsApple();
-
     /* override functions */
     virtual std::string getWritablePath() const override;
     virtual std::string getFullPathForDirectoryAndFilename(const std::string& directory, const std::string& filename) const override;
@@ -56,16 +57,19 @@ public:
     virtual bool writeToFile(const ValueMap& dict, const std::string& fullPath) override;
 
     virtual ValueVector getValueVectorFromFile(const std::string& filename) override;
+#if CC_FILEUTILS_APPLE_ENABLE_OBJC
     void setBundle(NSBundle* bundle);
+#endif
     
-    virtual bool isDirectoryExistInternal(const std::string& dirPath) const override;
+    virtual bool createDirectory(const std::string& path) override;
+private:
     virtual bool isFileExistInternal(const std::string& filePath) const override;
     virtual bool removeDirectory(const std::string& dirPath) override;
-private:
-    bool isFileExistInternal(const std::string& filePath,bool& isDirectory) const;
+    virtual void valueMapCompact(ValueMap& valueMap) override;
+    virtual void valueVectorCompact(ValueVector& valueVector) override;
 
-    NSBundle* getBundle() const;
-    NSBundle* _bundle;
+    struct IMPL;
+    std::unique_ptr<IMPL> pimpl_;
 };
 
 // end of platform group
@@ -74,4 +78,3 @@ private:
 NS_CC_END
 
 #endif    // __CC_FILEUTILS_APPLE_H__
-

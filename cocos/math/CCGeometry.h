@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2012 cocos2d-x.org
-Copyright (c) 2013-2016 Chukong Technologies
+Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -26,9 +27,6 @@ THE SOFTWARE.
 #ifndef __MATH_CCGEOMETRY_H__
 #define __MATH_CCGEOMETRY_H__
 
-#include <math.h>
-
-#include "platform/CCPlatformMacros.h"
 #include "base/ccMacros.h"
 #include "math/CCMath.h"
 
@@ -223,4 +221,3 @@ NS_CC_END
 /// @}
 
 #endif // __MATH_CCGEOMETRY_H__
-

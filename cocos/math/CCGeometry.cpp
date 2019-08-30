@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2012 cocos2d-x.org
-Copyright (c) 2013-2016 Chukong Technologies
+Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -26,6 +27,7 @@ THE SOFTWARE.
 #include "math/CCGeometry.h"
 
 #include <algorithm>
+#include <cmath>
 #include "base/ccMacros.h"
 
 // implementation of Vec2
@@ -33,7 +35,7 @@ NS_CC_BEGIN
 
 // implementation of Size
 
-Size::Size() : width(0), height(0)
+Size::Size(void) : width(0), height(0)
 {
 }
 
@@ -90,15 +92,15 @@ void Size::setSize(float w, float h)
 
 bool Size::equals(const Size& target) const
 {
-    return (fabs(this->width  - target.width)  < FLT_EPSILON)
-        && (fabs(this->height - target.height) < FLT_EPSILON);
+    return (std::abs(this->width  - target.width)  < FLT_EPSILON)
+        && (std::abs(this->height - target.height) < FLT_EPSILON);
 }
 
 const Size Size::ZERO = Size(0, 0);
 
 // implementation of Rect
 
-Rect::Rect()
+Rect::Rect(void)
 {
     setRect(0.0f, 0.0f, 0.0f, 0.0f);
 }
@@ -200,16 +202,16 @@ bool Rect::intersectsCircle(const cocos2d::Vec2 &center, float radius) const
     float w = size.width / 2;
     float h = size.height / 2;
 
-    float dx = fabs(center.x - rectangleCenter.x);
-    float dy = fabs(center.y - rectangleCenter.y);
+    float dx = std::abs(center.x - rectangleCenter.x);
+    float dy = std::abs(center.y - rectangleCenter.y);
 
     if (dx > (radius + w) || dy > (radius + h))
     {
         return false;
     }
 
-    Vec2 circleDistance(fabs(center.x - origin.x - w),
-                        fabs(center.y - origin.y - h));
+    Vec2 circleDistance(std::abs(center.x - origin.x - w),
+                        std::abs(center.y - origin.y - h));
 
     if (circleDistance.x <= (w))
     {
@@ -278,4 +280,3 @@ Rect Rect::unionWithRect(const Rect & rect) const
 const Rect Rect::ZERO = Rect(0, 0, 0, 0);
 
 NS_CC_END
-

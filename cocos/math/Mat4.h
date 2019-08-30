@@ -1,6 +1,7 @@
 /**
  Copyright 2013 BlackBerry Inc.
- Copyright (c) 2014-2016 Chukong Technologies
+ Copyright (c) 2014-2016 Chukong Technologies Inc.
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -211,7 +212,7 @@ public:
      * @param zFarPlane The maximum z-value of the view volume.
      * @param dst A matrix to store the result in.
      */
-    static void createOrthographic(float width, float height, float zNearPlane, float zFarPlane, Mat4* dst);
+    static void createOrthographic(float left, float right, float bottom, float top, float zNearPlane, float zFarPlane, Mat4* dst);
 
     /**
      * Creates an orthographic projection matrix.

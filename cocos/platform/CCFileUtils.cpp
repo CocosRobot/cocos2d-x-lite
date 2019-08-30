@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2013 cocos2d-x.org
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -23,23 +24,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-#include "CCFileUtils.h"
+#include "platform/CCFileUtils.h"
 
 #include <stack>
 
 #include "base/CCData.h"
 #include "base/ccMacros.h"
-#include "base/CCDirector.h"
 #include "platform/CCSAXParser.h"
-#include "base/ccUtils.h"
 
 #include "tinyxml2/tinyxml2.h"
+#include "tinydir/tinydir.h"
+
 #ifdef MINIZIP_FROM_SYSTEM
 #include <minizip/unzip.h>
 #else // from our embedded sources
 #include "unzip/unzip.h"
 #endif
 #include <sys/stat.h>
+#include <regex>
 
 NS_CC_BEGIN
 
@@ -86,6 +88,7 @@ public:
 public:
     DictMaker()
         : _resultType(SAX_RESULT_NONE)
+        , _state(SAX_NONE)
     {
     }
 
@@ -129,7 +132,7 @@ public:
         return _rootArray;
     }
 
-    void startElement(void *ctx, const char *name, const char **atts)
+    virtual void startElement(void *ctx, const char *name, const char **atts) override
     {
         CC_UNUSED_PARAM(ctx);
         CC_UNUSED_PARAM(atts);
@@ -220,7 +223,7 @@ public:
         }
     }
 
-    void endElement(void *ctx, const char *name)
+    virtual void endElement(void *ctx, const char *name) override
     {
         CC_UNUSED_PARAM(ctx);
         SAXState curState = _stateStack.empty() ? SAX_DICT : _stateStack.top();
@@ -274,7 +277,7 @@ public:
                 else if (sName == "integer")
                     _curArray->push_back(Value(atoi(_curValue.c_str())));
                 else
-                    _curArray->push_back(Value(utils::atof(_curValue.c_str())));
+                    _curArray->push_back(Value(std::atof(_curValue.c_str())));
             }
             else if (SAX_DICT == curState)
             {
@@ -283,7 +286,7 @@ public:
                 else if (sName == "integer")
                     (*_curDict)[_curKey] = Value(atoi(_curValue.c_str()));
                 else
-                    (*_curDict)[_curKey] = Value(utils::atof(_curValue.c_str()));
+                    (*_curDict)[_curKey] = Value(std::atof(_curValue.c_str()));
             }
 
             _curValue.clear();
@@ -292,7 +295,7 @@ public:
         _state = SAX_NONE;
     }
 
-    void textHandler(void *ctx, const char *ch, int len)
+    virtual void textHandler(void *ctx, const char *ch, int len) override
     {
         CC_UNUSED_PARAM(ctx);
         if (_state == SAX_NONE)
@@ -347,7 +350,7 @@ ValueMap FileUtils::getValueMapFromData(const char* filedata, int filesize)
 
 ValueVector FileUtils::getValueVectorFromFile(const std::string& filename)
 {
-    const std::string fullPath = fullPathForFilename(filename.c_str());
+    const std::string fullPath = fullPathForFilename(filename);
     DictMaker tMaker;
     return tMaker.arrayWithContentsOfFile(fullPath);
 }
@@ -385,12 +388,12 @@ bool FileUtils::writeValueMapToFile(const ValueMap& dict, const std::string& ful
     doc->LinkEndChild(docType);
 
     tinyxml2::XMLElement *rootEle = doc->NewElement("plist");
-    rootEle->SetAttribute("version", "1.0");
     if (nullptr == rootEle)
     {
         delete doc;
         return false;
     }
+    rootEle->SetAttribute("version", "1.0");
     doc->LinkEndChild(rootEle);
 
     tinyxml2::XMLElement *innerDict = generateElementForDict(dict, doc);
@@ -425,12 +428,12 @@ bool FileUtils::writeValueVectorToFile(const ValueVector& vecData, const std::st
     doc->LinkEndChild(docType);
 
     tinyxml2::XMLElement *rootEle = doc->NewElement("plist");
-    rootEle->SetAttribute("version", "1.0");
     if (nullptr == rootEle)
     {
         delete doc;
         return false;
     }
+    rootEle->SetAttribute("version", "1.0");
     doc->LinkEndChild(rootEle);
 
     tinyxml2::XMLElement *innerDict = generateElementForArray(vecData, doc);
@@ -573,18 +576,19 @@ bool FileUtils::writeStringToFile(const std::string& dataStr, const std::string&
     Data data;
     data.fastSet((unsigned char*)dataStr.c_str(), dataStr.size());
 
-    bool ret = writeDataToFile(data, fullPath);
-    data.fastSet(nullptr, 0);
+    bool rv = writeDataToFile(data, fullPath);
 
-    return ret;
+    // need to give up buffer ownership for temp using, or double free will occur
+    data.takeBuffer();
+    return rv;
 }
 
-bool FileUtils::writeDataToFile(const Data& retData, const std::string& fullPath)
+bool FileUtils::writeDataToFile(const Data& data, const std::string& fullPath)
 {
     size_t size = 0;
     const char* mode = "wb";
 
-    CCASSERT(!fullPath.empty() && retData.getSize() != 0, "Invalid parameters.");
+    CCASSERT(!fullPath.empty() && data.getSize() != 0, "Invalid parameters.");
 
     auto fileutils = FileUtils::getInstance();
     do
@@ -592,9 +596,9 @@ bool FileUtils::writeDataToFile(const Data& retData, const std::string& fullPath
         // Read the file from hardware
         FILE *fp = fopen(fileutils->getSuitableFOpen(fullPath).c_str(), mode);
         CC_BREAK_IF(!fp);
-        size = retData.getSize();
+        size = data.getSize();
 
-        fwrite(retData.getBytes(), size, 1, fp);
+        fwrite(data.getBytes(), size, 1, fp);
 
         fclose(fp);
 
@@ -616,117 +620,72 @@ void FileUtils::purgeCachedEntries()
     _fullPathCache.clear();
 }
 
-static Data getData(const std::string& filename, bool forString)
-{
-    if (filename.empty())
-    {
-        return Data::Null;
-    }
-
-    Data ret;
-    unsigned char* buffer = nullptr;
-    size_t size = 0;
-    size_t readsize;
-    const char* mode = nullptr;
-
-    if (forString)
-        mode = "rt";
-    else
-        mode = "rb";
-
-    auto fileutils = FileUtils::getInstance();
-    do
-    {
-        // Read the file from hardware
-        std::string fullPath = fileutils->fullPathForFilename(filename);
-        if (fullPath.empty()) {
-            break;
-        }
-        FILE *fp = fopen(fileutils->getSuitableFOpen(fullPath).c_str(), mode);
-        CC_BREAK_IF(!fp);
-        fseek(fp,0,SEEK_END);
-        size = ftell(fp);
-        fseek(fp,0,SEEK_SET);
-
-        if (forString)
-        {
-            buffer = (unsigned char*)malloc(sizeof(unsigned char) * (size + 1));
-            buffer[size] = '\0';
-        }
-        else
-        {
-            buffer = (unsigned char*)malloc(sizeof(unsigned char) * size);
-        }
-
-        readsize = fread(buffer, sizeof(unsigned char), size, fp);
-        fclose(fp);
-
-        if (forString && readsize < size)
-        {
-            buffer[readsize] = '\0';
-        }
-    } while (0);
-
-    if (nullptr == buffer || 0 == readsize)
-    {
-        CCLOG("Get data from file %s failed", filename.c_str());
-        if (buffer)
-            free(buffer);
-    }
-    else
-    {
-        ret.fastSet(buffer, readsize);
-    }
-
-    return ret;
-}
-
 std::string FileUtils::getStringFromFile(const std::string& filename)
 {
-    Data data = getData(filename, true);
-    if (data.isNull())
-        return "";
-
-    std::string ret((const char*)data.getBytes());
-    return ret;
+    std::string s;
+    getContents(filename, &s);
+    return s;
 }
 
 Data FileUtils::getDataFromFile(const std::string& filename)
 {
-    return getData(filename, false);
+    Data d;
+    getContents(filename, &d);
+    return d;
+}
+
+
+FileUtils::Status FileUtils::getContents(const std::string& filename, ResizableBuffer* buffer)
+{
+    if (filename.empty())
+        return Status::NotExists;
+
+    auto fs = FileUtils::getInstance();
+
+    std::string fullPath = fs->fullPathForFilename(filename);
+    if (fullPath.empty())
+        return Status::NotExists;
+
+    FILE *fp = fopen(fs->getSuitableFOpen(fullPath).c_str(), "rb");
+    if (!fp)
+        return Status::OpenFailed;
+
+#if defined(_MSC_VER)
+    auto descriptor = _fileno(fp);
+#else
+    auto descriptor = fileno(fp);
+#endif
+    struct stat statBuf;
+    if (fstat(descriptor, &statBuf) == -1) {
+        fclose(fp);
+        return Status::ReadFailed;
+    }
+    size_t size = statBuf.st_size;
+
+    buffer->resize(size);
+    size_t readsize = fread(buffer->buffer(), 1, size, fp);
+    fclose(fp);
+
+    if (readsize < size) {
+        buffer->resize(readsize);
+        return Status::ReadFailed;
+    }
+
+    return Status::OK;
 }
 
 unsigned char* FileUtils::getFileData(const std::string& filename, const char* mode, ssize_t *size)
 {
-    unsigned char * buffer = nullptr;
     CCASSERT(!filename.empty() && size != nullptr && mode != nullptr, "Invalid parameters.");
-    if (filename.empty() || mode == nullptr || size == nullptr) {
+    (void)(mode); // mode is unused, as we do not support text mode any more...
+
+    Data d;
+    if (getContents(filename, &d) != Status::OK) {
+        *size = 0;
         return nullptr;
     }
-    *size = 0;
-    do
-    {
-        // read the file from hardware
-        const std::string fullPath = fullPathForFilename(filename);
-        FILE *fp = fopen(getSuitableFOpen(fullPath).c_str(), mode);
-        CC_BREAK_IF(!fp);
 
-        fseek(fp,0,SEEK_END);
-        *size = ftell(fp);
-        fseek(fp,0,SEEK_SET);
-        buffer = (unsigned char*)malloc(*size);
-        *size = fread(buffer,sizeof(unsigned char), *size,fp);
-        fclose(fp);
-    } while (0);
-
-    if (!buffer)
-    {
-        std::string msg = "Get data from file(";
-        msg.append(filename).append(") failed!");
-
-        CCLOG("%s", msg.c_str());
-    }
-    return buffer;
+    return d.takeBuffer(size);
 }
 
 unsigned char* FileUtils::getFileDataFromZip(const std::string& zipFilePath, const std::string& filename, ssize_t *size)
@@ -739,10 +698,10 @@ unsigned char* FileUtils::getFileDataFromZip(const std::string& zipFilePath, con
     {
         CC_BREAK_IF(zipFilePath.empty());
 
-        file = unzOpen(zipFilePath.c_str());
+        file = unzOpen(FileUtils::getInstance()->getSuitableFOpen(zipFilePath).c_str());
         CC_BREAK_IF(!file);
 
-        // FIXME: Other platforms should use upstream minizip like mingw-w64
+        // IDEA: Other platforms should use upstream minizip like mingw-w64
         #ifdef MINIZIP_FROM_SYSTEM
         int ret = unzLocateFile(file, filename.c_str(), NULL);
         #else
@@ -822,7 +781,7 @@ std::string FileUtils::fullPathForFilename(const std::string &filename) const
 
     if (isAbsolutePath(filename))
     {
-        return filename;
+        return normalizePath(filename);
     }
 
     // Already Cached ?
@@ -849,12 +808,11 @@ std::string FileUtils::fullPathForFilename(const std::string &filename) const
                 _fullPathCache.insert(std::make_pair(filename, fullpath));
                 return fullpath;
             }
-
         }
     }
 
     if(isPopupNotify()){
-        CCLOG("cocos2d: fullPathForFilename: No file found at %s. Possible missing file.", filename.c_str());
+        CCLOG("fullPathForFilename: No file found at %s. Possible missing file.", filename.c_str());
     }
 
     // The file wasn't found, return empty string.
@@ -868,6 +826,11 @@ std::string FileUtils::fullPathFromRelativeFile(const std::string &filename, con
 
 void FileUtils::setSearchResolutionsOrder(const std::vector<std::string>& searchResolutionsOrder)
 {
+    if (_searchResolutionsOrderArray == searchResolutionsOrder)
+    {
+        return;
+    }
+
     bool existDefault = false;
     _fullPathCache.clear();
     _searchResolutionsOrderArray.clear();
@@ -916,57 +879,64 @@ const std::vector<std::string>& FileUtils::getSearchPaths() const
     return _searchPathArray;
 }
 
+const std::vector<std::string>& FileUtils::getOriginalSearchPaths() const
+{
+    return _originalSearchPaths;
+}
+
 void FileUtils::setWritablePath(const std::string& writablePath)
 {
     _writablePath = writablePath;
 }
 
-void FileUtils::setDefaultResourceRootPath(const std::string& resRootPath)
+const std::string& FileUtils::getDefaultResourceRootPath() const
 {
-    if (_defaultResRootPath == resRootPath)
-        return;
+    return _defaultResRootPath;
+}
 
-    if (!_searchPathArray.empty() && !_defaultResRootPath.empty())
+void FileUtils::setDefaultResourceRootPath(const std::string& path)
+{
+    if (_defaultResRootPath != path)
     {
-        auto tmp = _defaultResRootPath.length();
-        for (auto& iter : _searchPathArray)
+        _fullPathCache.clear();
+        _defaultResRootPath = path;
+        if (!_defaultResRootPath.empty() && _defaultResRootPath[_defaultResRootPath.length()-1] != '/')
         {
-            iter = iter.substr(tmp);
+            _defaultResRootPath += '/';
         }
-        _defaultResRootPath = resRootPath;
-        setSearchPaths(_searchPathArray);
-    }
-    else
-    {
-        _defaultResRootPath = resRootPath;
+
+        // Updates search paths
+        setSearchPaths(_originalSearchPaths);
     }
 }
 
 void FileUtils::setSearchPaths(const std::vector<std::string>& searchPaths)
 {
     bool existDefaultRootPath = false;
+    _originalSearchPaths = searchPaths;
 
     _fullPathCache.clear();
     _searchPathArray.clear();
-    for (const auto& iter : searchPaths)
+
+    for (const auto& path : _originalSearchPaths)
     {
         std::string prefix;
-        std::string path;
+        std::string fullPath;
 
-        if (!isAbsolutePath(iter))
+        if (!isAbsolutePath(path))
         { // Not an absolute path
             prefix = _defaultResRootPath;
         }
-        path = prefix + (iter);
+        fullPath = prefix + path;
         if (!path.empty() && path[path.length()-1] != '/')
         {
-            path += "/";
+            fullPath += "/";
         }
         if (!existDefaultRootPath && path == _defaultResRootPath)
         {
             existDefaultRootPath = true;
         }
-        _searchPathArray.push_back(path);
+        _searchPathArray.push_back(fullPath);
     }
 
     if (!existDefaultRootPath)
@@ -988,8 +958,10 @@ void FileUtils::addSearchPath(const std::string &searchpath,const bool front)
         path += "/";
     }
     if (front) {
+        _originalSearchPaths.insert(_originalSearchPaths.begin(), searchpath);
         _searchPathArray.insert(_searchPathArray.begin(), path);
     } else {
+        _originalSearchPaths.push_back(searchpath);
         _searchPathArray.push_back(path);
     }
 }
@@ -1012,7 +984,7 @@ void FileUtils::loadFilenameLookupDictionaryFromFile(const std::string &filename
             int version = metadata["version"].asInt();
             if (version != 1)
             {
-                CCLOG("cocos2d: ERROR: Invalid filenameLookup dictionary version: %d. Filename: %s", version, filename.c_str());
+                CCLOG("ERROR: Invalid filenameLookup dictionary version: %d. Filename: %s", version, filename.c_str());
                 return;
             }
             setFilenameLookupDictionary( dict["filenames"].asValueMap());
@@ -1028,6 +1000,7 @@ std::string FileUtils::getFullPathForDirectoryAndFilename(const std::string& dir
         ret += '/';
     }
     ret += filename;
+    ret = normalizePath(ret);
 
     // if the file doesn't exist, return an empty string
     if (!isFileExistInternal(ret)) {
@@ -1040,7 +1013,7 @@ bool FileUtils::isFileExist(const std::string& filename) const
 {
     if (isAbsolutePath(filename))
     {
-        return isFileExistInternal(filename);
+        return isFileExistInternal(normalizePath(filename));
     }
     else
     {
@@ -1063,7 +1036,7 @@ bool FileUtils::isDirectoryExist(const std::string& dirPath) const
 
     if (isAbsolutePath(dirPath))
     {
-        return isDirectoryExistInternal(dirPath);
+        return isDirectoryExistInternal(normalizePath(dirPath));
     }
 
     // Already Cached ?
@@ -1079,7 +1052,7 @@ bool FileUtils::isDirectoryExist(const std::string& dirPath) const
         for (const auto& resolutionIt : _searchResolutionsOrderArray)
         {
             // searchPath + file_path + resourceDirectory
-            fullpath = searchIt + dirPath + resolutionIt;
+            fullpath = fullPathForFilename(searchIt + dirPath + resolutionIt);
             if (isDirectoryExistInternal(fullpath))
             {
                 _fullPathCache.insert(std::make_pair(dirPath, fullpath));
@@ -1088,6 +1061,130 @@ bool FileUtils::isDirectoryExist(const std::string& dirPath) const
         }
     }
     return false;
+}
+
+std::vector<std::string> FileUtils::listFiles(const std::string& dirPath) const
+{
+    std::string fullpath = fullPathForFilename(dirPath);
+    std::vector<std::string> files;
+    if (isDirectoryExist(fullpath))
+    {
+        tinydir_dir dir;
+#ifdef UNICODE
+        unsigned int length = MultiByteToWideChar(CP_UTF8, 0, &fullpath[0], (int)fullpath.size(), NULL, 0);
+        if (length != fullpath.size())
+        {
+            return files;
+        }
+        std::wstring fullpathstr(length, 0);
+        MultiByteToWideChar(CP_UTF8, 0, &fullpath[0], (int)fullpath.size(), &fullpathstr[0], length);
+#else
+        std::string fullpathstr = fullpath;
+#endif
+        if (tinydir_open(&dir, &fullpathstr[0]) != -1)
+        {
+            while (dir.has_next)
+            {
+                tinydir_file file;
+                if (tinydir_readfile(&dir, &file) == -1)
+                {
+                    // Error getting file
+                    break;
+                }
+                
+#ifdef UNICODE
+                std::wstring path = file.path;
+                length = WideCharToMultiByte(CP_UTF8, 0, &path[0], (int)path.size(), NULL, 0, NULL, NULL);
+                std::string filepath;
+                if (length > 0)
+                {
+                    filepath.resize(length);
+                    WideCharToMultiByte(CP_UTF8, 0, &path[0], (int)path.size(), &filepath[0], length, NULL, NULL);
+                }
+#else
+                std::string filepath = file.path;
+#endif
+                if (file.is_dir)
+                {
+                    filepath.append("/");
+                }
+                files.push_back(filepath);
+                
+                if (tinydir_next(&dir) == -1)
+                {
+                    // Error getting next file
+                    break;
+                }
+            }
+        }
+        tinydir_close(&dir);
+    }
+    return files;
+}
+
+void FileUtils::listFilesRecursively(const std::string& dirPath, std::vector<std::string> *files) const
+{
+    std::string fullpath = fullPathForFilename(dirPath);
+    if (isDirectoryExist(fullpath))
+    {
+        tinydir_dir dir;
+#ifdef UNICODE
+        unsigned int length = MultiByteToWideChar(CP_UTF8, 0, &fullpath[0], (int)fullpath.size(), NULL, 0);
+        if (length != fullpath.size())
+        {
+            return;
+        }
+        std::wstring fullpathstr(length, 0);
+        MultiByteToWideChar(CP_UTF8, 0, &fullpath[0], (int)fullpath.size(), &fullpathstr[0], length);
+#else
+        std::string fullpathstr = fullpath;
+#endif
+        if (tinydir_open(&dir, &fullpathstr[0]) != -1)
+        {
+            while (dir.has_next)
+            {
+                tinydir_file file;
+                if (tinydir_readfile(&dir, &file) == -1)
+                {
+                    // Error getting file
+                    break;
+                }
+
+#ifdef UNICODE
+                std::wstring path = file.path;
+                length = WideCharToMultiByte(CP_UTF8, 0, &path[0], (int)path.size(), NULL, 0, NULL, NULL);
+                std::string filepath;
+                if (length > 0)
+                {
+                    filepath.resize(length);
+                    WideCharToMultiByte(CP_UTF8, 0, &path[0], (int)path.size(), &filepath[0], length, NULL, NULL);
+                }
+#else
+                std::string filepath = file.path;
+#endif
+                if (file.name[0] != '.')
+                {
+                    if (file.is_dir)
+                    {
+                        filepath.append("/");
+                        files->push_back(filepath);
+                        listFilesRecursively(filepath, files);
+                    }
+                    else
+                    {
+                        files->push_back(filepath);
+                    }
+                }
+                
+                if (tinydir_next(&dir) == -1)
+                {
+                    // Error getting next file
+                    break;
+                }
+            }
+        }
+        tinydir_close(&dir);
+    }
 }
 
 #if (CC_TARGET_PLATFORM == CC_PLATFORM_WIN32) || (CC_TARGET_PLATFORM == CC_PLATFORM_WINRT)
@@ -1146,6 +1243,11 @@ long FileUtils::getFileSize(const std::string &filepath)
 #include <errno.h>
 #include <dirent.h>
 
+// android doesn't have ftw.h
+#if (CC_TARGET_PLATFORM != CC_PLATFORM_ANDROID)
+#include <ftw.h>
+#endif
+
 bool FileUtils::isDirectoryExistInternal(const std::string& dirPath) const
 {
     struct stat st;
@@ -1193,9 +1295,9 @@ bool FileUtils::createDirectory(const std::string& path)
 
     // Create path recursively
     subpath = "";
-    for (int i = 0; i < dirs.size(); ++i)
+    for (const auto& iter : dirs)
     {
-        subpath += dirs[i];
+        subpath += iter;
         dir = opendir(subpath.c_str());
 
         if (!dir)
@@ -1219,14 +1321,31 @@ bool FileUtils::createDirectory(const std::string& path)
     return true;
 }
 
+namespace
+{
+#if (CC_TARGET_PLATFORM != CC_PLATFORM_ANDROID)
+    int unlink_cb(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf)
+    {
+        int rv = remove(fpath);
+        
+        if (rv)
+            perror(fpath);
+        
+        return rv;
+    }
+#endif
+}
+
 bool FileUtils::removeDirectory(const std::string& path)
 {
-    if (!path.empty() && path[path.size() - 1] != '/')
-    {
-        CCLOGERROR("Fail to remove directory, path must terminate with '/': %s", path.c_str());
-        return false;
-    }
+#if !defined(CC_TARGET_OS_TVOS)
 
+#if (CC_TARGET_PLATFORM != CC_PLATFORM_ANDROID)
+    if (nftw(path.c_str(), unlink_cb, 64, FTW_DEPTH | FTW_PHYS) == -1)
+        return false;
+    else
+        return true;
+#else
     std::string command = "rm -r ";
     // Path may include space.
     command += "\"" + path + "\"";
@@ -1234,6 +1353,11 @@ bool FileUtils::removeDirectory(const std::string& path)
         return true;
     else
         return false;
+#endif // (CC_TARGET_PLATFORM != CC_PLATFORM_ANDROID)
+
+#else
+    return false;
+#endif // !defined(CC_TARGET_OS_TVOS)
 }
 
 bool FileUtils::removeFile(const std::string &path)
@@ -1307,7 +1431,9 @@ long FileUtils::getFileSize(const std::string &filepath)
 //////////////////////////////////////////////////////////////////////////
 // Notification support when getFileData from invalid file path.
 //////////////////////////////////////////////////////////////////////////
-static bool s_popupNotify = true;
+
+/* Default to false, enable it by setPopupNotify if needed */
+static bool s_popupNotify = false;
 
 void FileUtils::setPopupNotify(bool notify)
 {
@@ -1333,5 +1459,45 @@ std::string FileUtils::getFileExtension(const std::string& filePath) const
     return fileExtension;
 }
 
-NS_CC_END
+void FileUtils::valueMapCompact(ValueMap &valueMap)
+{
+}
 
+void FileUtils::valueVectorCompact(ValueVector &valueVector)
+{
+}
+
+std::string FileUtils::getFileDir(const std::string& path) const
+{
+    std::string ret;
+    size_t pos = path.rfind("/");
+    if (pos != std::string::npos)
+    {
+        ret = path.substr(0, pos);
+    }
+
+    normalizePath(ret);
+
+    return ret;
+}
+
+std::string FileUtils::normalizePath(const std::string& path) const
+{
+    std::string ret;
+    // Normalize: remove . and ..
+    ret = std::regex_replace(path, std::regex("/\\./"), "/");
+    ret = std::regex_replace(ret, std::regex("/\\.$"), "");
+
+    size_t pos;
+    while ((pos = ret.find("..")) != std::string::npos && pos > 2)
+    {
+        size_t prevSlash = ret.rfind("/", pos-2);
+        if (prevSlash == std::string::npos)
+            break;
+
+        ret = ret.replace(prevSlash, pos - prevSlash + 2 , "");
+    }
+    return ret;
+}
+
+NS_CC_END

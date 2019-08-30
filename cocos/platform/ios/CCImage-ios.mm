@@ -1,6 +1,7 @@
 /****************************************************************************
 Copyright (c) 2010-2012 cocos2d-x.org
 Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
 
 http://www.cocos2d-x.org
 
@@ -27,7 +28,6 @@ THE SOFTWARE.
 #if CC_TARGET_PLATFORM == CC_PLATFORM_IOS
 
 #import "platform/CCImage.h"
-#import "platform/CCCommon.h"
 #import <string>
 
 #import <Foundation/Foundation.h>
@@ -100,18 +100,16 @@ bool cocos2d::Image::saveToFile(const std::string& filename, bool isToRGB)
     CGColorSpaceRelease(colorSpaceRef);
     CGDataProviderRelease(provider);
 
-    NSData *data;
-
-    if (saveToPNG)
-    {
-        data = UIImagePNGRepresentation(image);
+    // NOTE: Prevent memory leak. Requires ARC enabled.
+    @autoreleasepool {
+        NSData *data;
+        if (saveToPNG) {
+            data = UIImagePNGRepresentation(image);
+        } else {
+            data = UIImageJPEGRepresentation(image, 1.0f);
+        }
+        [data writeToFile:[NSString stringWithUTF8String:filename.c_str()] atomically:YES];
     }
-    else
-    {
-        data = UIImageJPEGRepresentation(image, 1.0f);
-    }
-
-    [data writeToFile:[NSString stringWithUTF8String:filename.c_str()] atomically:YES];
 
     [image release];
 
@@ -119,102 +117,6 @@ bool cocos2d::Image::saveToFile(const std::string& filename, bool isToRGB)
     {
         delete [] pixels;
     }
-
-    return true;
-}
-
-bool cocos2d::Image::initWithJpgData(const unsigned char *  data, ssize_t dataLen)
-{
-    return initWithPngData(data, dataLen);
-}
-
-bool cocos2d::Image::initWithTiffData(const unsigned char * data, ssize_t dataLen)
-{
-    return initWithPngData(data, dataLen);
-}
-
-bool cocos2d::Image::initWithPngData(const unsigned char * data, ssize_t dataLen)
-{
-    // create CGImage and get CGImageRef
-    NSData *nsData = [NSData dataWithBytes:data length:dataLen];
-    UIImage *uiImage = [UIImage imageWithData:nsData];
-    if (!uiImage)
-        return false;
-
-    // get width and height
-    CGImageRef cgimageRef = uiImage.CGImage;
-    _width = (int)CGImageGetWidth(cgimageRef);
-    _height = (int)CGImageGetHeight(cgimageRef);
-
-    // get data length and data
-    CFDataRef rawData = CGDataProviderCopyData(CGImageGetDataProvider(cgimageRef));
-    _dataLen = CFDataGetLength(rawData);
-    _data = static_cast<unsigned char*>(malloc(_dataLen * sizeof(unsigned char)));
-    CFDataGetBytes(rawData, CFRangeMake(0, _dataLen), _data);
-    CFRelease(rawData);
-
-    // check if it is alpha premultified
-    CGImageAlphaInfo alphaInfo = CGImageGetAlphaInfo(cgimageRef);
-    _hasPremultipliedAlpha = alphaInfo == kCGImageAlphaPremultipliedLast || alphaInfo == kCGImageAlphaPremultipliedFirst;
-
-    // get render format
-    size_t bitsPerComponent = CGImageGetBitsPerComponent(cgimageRef);
-    size_t bitsPerPixel = CGImageGetBitsPerPixel(cgimageRef);
-    size_t channels = bitsPerPixel / bitsPerComponent;
-    bool   hasAlpha = ((alphaInfo == kCGImageAlphaPremultipliedLast) ||
-                       (alphaInfo == kCGImageAlphaPremultipliedFirst) ||
-                       (alphaInfo == kCGImageAlphaLast) ||
-                       (alphaInfo == kCGImageAlphaFirst)
-                      ? true : false);
-
-    CGColorSpaceRef colorSpace = CGImageGetColorSpace(cgimageRef);
-    if (colorSpace)
-    {
-        switch (CGColorSpaceGetModel(colorSpace))
-        {
-            case kCGColorSpaceModelMonochrome:
-                if (hasAlpha && channels == 2 && bitsPerComponent == 8)
-                {
-                    _renderFormat = cocos2d::Texture2D::PixelFormat::AI88;
-                    break;
-                }
-                // other situations continue
-            case kCGColorSpaceModelRGB:
-                if (hasAlpha && channels == 4 && bitsPerComponent == 8)
-                {
-                    _renderFormat = cocos2d::Texture2D::PixelFormat::RGBA8888;
-                    break;
-                }
-                if (!hasAlpha && channels == 3 && bitsPerComponent == 8)
-                {
-                    _renderFormat = cocos2d::Texture2D::PixelFormat::RGB888;
-                    break;
-                }
-                // other situations continue
-            default:
-            {
-                colorSpace = CGColorSpaceCreateDeviceRGB();
-                free(_data);
-                _data = static_cast<unsigned char*>(malloc(_height * _width * 4));
-                CGContextRef context = CGBitmapContextCreate(_data, _width, _height, 8, 4 * _width, colorSpace, kCGImageAlphaPremultipliedLast);
-                CGColorSpaceRelease(colorSpace);
-                CGContextClearRect(context, CGRectMake(0, 0, _width, _height));
-                CGContextTranslateCTM(context, 0, 0);
-                CGContextDrawImage(context, CGRectMake(0, 0, _width, _height), cgimageRef);
-                CGContextRelease(context);
-
-                _renderFormat = cocos2d::Texture2D::PixelFormat::RGBA8888;
-                _hasPremultipliedAlpha = true;
-                break;
-            }
-        }
-    }
-    else
-    {
-        // it is a mask
-        _renderFormat = cocos2d::Texture2D::PixelFormat::A8;
-    }
-
 
     return true;
 }
